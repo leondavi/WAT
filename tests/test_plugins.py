@@ -24,3 +24,21 @@ def test_loading_twice_is_idempotent():
     # Modules are import-cached, so a second load must not raise ActionAlreadyRegistered.
     plugins.load(["liveview"])
     plugins.load(["liveview"])
+
+
+def test_load_plugin_from_file_path(tmp_path):
+    plugin = tmp_path / "myapp_wat_plugin.py"
+    plugin.write_text(
+        "from wat import register_action\n"
+        "@register_action('demo_app_action', group='myapp')\n"
+        "def _a(ctx):\n    return True\n"
+    )
+    plugins.load([str(plugin)], root=tmp_path)
+    assert REGISTRY.has("demo_app_action")
+
+
+def test_missing_plugin_file_raises(tmp_path):
+    import pytest
+
+    with pytest.raises(FileNotFoundError):
+        plugins.load(["does/not/exist.py"], root=tmp_path)

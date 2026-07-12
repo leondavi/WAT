@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     cfg = load_config(args.root, _overrides(args))
 
     # Load extensions then app plugins so they layer on top of core actions.
-    plugins.load(list(cfg.extensions) + list(cfg.plugins))
+    plugins.load(list(cfg.extensions) + list(cfg.plugins), root=cfg.root)
 
     if args.print_actions:
         return _print_actions()
