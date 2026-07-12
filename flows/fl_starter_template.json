@@ -1,0 +1,25 @@
+{
+  "name": "Starter template — copy this to author a new flow",
+  "label": "example/template",
+  "description": "Rename to fl_<your_name>.json. See CONTRACT.md for every action + field.",
+  "base_url": "http://localhost:4000",
+  "steps": [
+    {"action": "open", "url": "/", "comment": "always step 0"},
+    {"action": "wait_for", "selector": "body"},
+
+    {"action": "click", "by": "role", "selector": "button", "name": "Sign in",
+     "comment": "prefer semantic locators: role / testid / text / label"},
+    {"action": "type", "by": "testid", "selector": "email", "value": "user@example.com"},
+
+    {"action": "assert_element", "selector": "#dashboard"},
+    {"action": "assert_text_contains", "value": "Welcome"},
+
+    {"action": "capture", "selector": "#token", "attr": "value", "var": "tok",
+     "comment": "store a value, reference later as {{tok}}"},
+    {"action": "navigate", "url": "/verify/{{tok}}"},
+
+    {"action": "assert_js",
+     "script": "return {pass: !!window.MyApp, reason: 'MyApp global missing'}",
+     "comment": "the {pass, reason} contract; add timeout/retry/optional/soft as needed"}
+  ]
+}

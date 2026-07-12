@@ -1,0 +1,12 @@
+{
+  "name": "Example: assert_js with a Promise-based wait",
+  "label": "example/assert_js",
+  "description": "Shows the {pass, reason} contract and a native Promise wait (no async_script split).",
+  "steps": [
+    {"action": "open", "url": "data:text/html,<div id='out'>pending</div><script>setTimeout(()=>{document.getElementById('out').textContent='ready'},300)</script>"},
+    {"action": "assert_js",
+     "script": "return new Promise(r => setTimeout(() => r({pass: document.getElementById('out').textContent === 'ready', reason: 'text was ' + document.getElementById('out').textContent}), 500))",
+     "comment": "Playwright awaits the returned Promise automatically"},
+    {"action": "assert_element_text", "selector": "#out", "value": "ready"}
+  ]
+}

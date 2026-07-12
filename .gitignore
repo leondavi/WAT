@@ -1,0 +1,22 @@
+# WAT dedicated virtualenv (provisioned by install.py)
+.wat-venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Playwright / run artifacts (transient; keep committed artifacts under an app's own artifacts/)
+trace.zip
+*.failed.png
+*.failed.html
+*.agent_prompt.txt
+
+# OS
+.DS_Store

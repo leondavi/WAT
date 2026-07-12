@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WAT brand mark: five arrows, 72 deg apart, each radiating from a small central
+  gap outward to a common circle — a circular burst expanding inside -> outside.
+  Uses a radial gradient so the mark reads lighter at the core and stronger at the
+  tips, reinforcing the outward motion. `currentColor` is not used so the mark
+  keeps its identity on any background; swap the gradient stops to re-theme.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="WAT logo">
+  <defs>
+    <radialGradient id="watBurst" cx="50%" cy="50%" r="50%">
+      <stop offset="0%"  stop-color="#7dd3fc"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </radialGradient>
+    <!-- One arrow pointing up: shaft from radius 12 (gap) to a head whose tip sits at radius 48. -->
+    <path id="watArrow" d="M60,12 L70,28 L63.5,28 L63.5,48 L56.5,48 L56.5,28 L50,28 Z" fill="url(#watBurst)"/>
+  </defs>
+  <use href="#watArrow" transform="rotate(0 60 60)"/>
+  <use href="#watArrow" transform="rotate(72 60 60)"/>
+  <use href="#watArrow" transform="rotate(144 60 60)"/>
+  <use href="#watArrow" transform="rotate(216 60 60)"/>
+  <use href="#watArrow" transform="rotate(288 60 60)"/>
+</svg>

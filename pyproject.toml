@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wat"
+version = "0.1.0"
+description = "WAT (Web Auto Tester) — a JSON-flow-driven, Playwright-based browser test runner for complex flows."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "WAT" }]
+dependencies = [
+    # Single engine dependency. Browsers are installed separately via `playwright install`.
+    "playwright>=1.44",
+]
+
+[project.optional-dependencies]
+# `sql` pulls psycopg2 for the wat.ext.sql actions (sql / docker_sql / mix_run).
+sql = ["psycopg2-binary>=2.9"]
+# `liveview` is pure-python (no extra deps); the extra exists as an explicit opt-in marker.
+liveview = []
+# Development / test tooling.
+dev = ["pytest>=8"]
+
+[project.scripts]
+# Console entry point; also runnable as `python -m wat`.
+wat = "wat.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+wat = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+# Framework's own declarative default config. Apps override via their wat.toml
+# / [tool.wat] / watconfig.py (see wat.config for the layered loader).
+# ---------------------------------------------------------------------------
+[tool.wat]
+base_url = "http://localhost:4000"
+browser = "chromium"
+headless = true
+wait_ms = 10000
