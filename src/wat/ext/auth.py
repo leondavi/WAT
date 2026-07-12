@@ -23,7 +23,7 @@ from pathlib import Path
 
 from ..context import StepContext
 from ..errors import StepFailure, SOURCE_FLOW_AUTHORING
-from ..registry import register_action
+from ..registry import register_action, REGISTRY
 
 
 @dataclass
@@ -113,6 +113,18 @@ class PhoenixAuthProvider:
         ctx.page.locator(self.submit_selector).click()
         ctx.state["user"] = cred.email
         ctx.log.wat(f"logged in as {cred.email}")
+
+
+@register_action("login", group="auth",
+                 description="Log in via the registered login provider (see login_provider).")
+def login(ctx: StepContext) -> None:
+    provider = REGISTRY.get_login_provider()
+    if provider is None:
+        raise StepFailure(
+            "no login provider registered — call wat.login_provider(fn) in your plugin",
+            source=SOURCE_FLOW_AUTHORING,
+        )
+    provider(ctx)
 
 
 @register_action("logout", group="auth",
