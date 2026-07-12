@@ -29,6 +29,12 @@ def test_sleep_ms_alias_maps_to_seconds():
     assert validate_flow({"steps": [step]}) == []
 
 
+def test_js_alias_maps_to_script():
+    step = canonicalize_step({"action": "eval_js", "js": "return 1"})
+    assert step["script"] == "return 1"
+    assert validate_flow({"steps": [step]}) == []
+
+
 def test_canonicalize_requires_action():
     with pytest.raises(SchemaError):
         canonicalize_step({"selector": "#x"})

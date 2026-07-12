@@ -48,6 +48,7 @@ _FIELD_ALIASES = {
     "text": "value",                 # Cells typed/expected value
     "source_selector": "from_selector",  # legacy real_drag
     "target_selector": "to_selector",    # legacy real_drag
+    "js": "script",                  # legacy eval_js / assert_js script
 }
 
 
