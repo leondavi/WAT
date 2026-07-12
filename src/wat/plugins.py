@@ -36,6 +36,22 @@ def load(names: list[str], root: str | Path = ".") -> None:
         _load_one(name, Path(root))
 
 
+def load_reporting(names: list[str], root: str | Path = ".") -> list[tuple[str, bool, str | None]]:
+    """Like :func:`load`, but never raises — returns ``(name, ok, error)`` per entry.
+
+    Used by ``wat --doctor`` so a broken plugin/extension is reported as a wiring
+    failure instead of crashing the CLI.
+    """
+    results: list[tuple[str, bool, str | None]] = []
+    for name in names:
+        try:
+            _load_one(name, Path(root))
+            results.append((name, True, None))
+        except Exception as exc:  # noqa: BLE001 — surface any import/registration error
+            results.append((name, False, f"{type(exc).__name__}: {exc}"))
+    return results
+
+
 def _load_one(name: str, root: Path) -> None:
     if name in _BUNDLED:
         importlib.import_module(_BUNDLED[name])

@@ -42,3 +42,11 @@ def test_missing_plugin_file_raises(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         plugins.load(["does/not/exist.py"], root=tmp_path)
+
+
+def test_load_reporting_captures_ok_and_failure(tmp_path):
+    results = plugins.load_reporting(["liveview", "does/not/exist.py"], root=tmp_path)
+    by_name = {name: (ok, err) for name, ok, err in results}
+    assert by_name["liveview"] == (True, None)
+    ok, err = by_name["does/not/exist.py"]
+    assert ok is False and "FileNotFoundError" in err

@@ -36,3 +36,24 @@ def test_explicit_headless_wins_over_live():
 def test_browser_and_wait_overrides():
     ov = _parse(["--all", "--browser", "firefox", "--wait-ms", "5000"])
     assert ov["browser"] == "firefox" and ov["wait_ms"] == 5000
+
+
+def test_doctor_reports_extensions_and_hooks(tmp_path, capsys):
+    from wat.cli import main
+
+    (tmp_path / "wat.toml").write_text('extensions = ["liveview"]\n')
+    rc = main(["--doctor", "--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "extensions" in out and "liveview ✅" in out
+    assert "hooks" in out and "reset hook" in out
+    assert rc == 0  # playwright installed in the test venv
+
+
+def test_doctor_flags_broken_plugin(tmp_path, capsys):
+    from wat.cli import main
+
+    (tmp_path / "wat.toml").write_text('plugins = ["nope.py"]\n')
+    rc = main(["--doctor", "--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "nope.py ❌" in out
+    assert rc == 1  # a broken plugin makes doctor fail

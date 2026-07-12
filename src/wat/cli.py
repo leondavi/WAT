@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import plugins
 from .config import load_config, WatConfig
-from .registry import REGISTRY
+from .registry import REGISTRY, HOOK_PHASES
 from .schema import find_flows, flow_labels, load_flow, validate_file
 
 
@@ -80,13 +80,16 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     cfg = load_config(args.root, _overrides(args))
 
+    # --doctor loads plugins resiliently itself (a broken plugin is a finding,
+    # not a crash), so run it before the strict global load below.
+    if args.doctor:
+        return _doctor(cfg)
+
     # Load extensions then app plugins so they layer on top of core actions.
     plugins.load(list(cfg.extensions) + list(cfg.plugins), root=cfg.root)
 
     if args.print_actions:
         return _print_actions()
-    if args.doctor:
-        return _doctor(cfg)
     if args.migrate:
         return _migrate(cfg, args)
     if args.list:
@@ -199,13 +202,44 @@ def _print_actions() -> int:
 
 
 def _doctor(cfg: WatConfig) -> int:
+    """Pre-flight wiring check: config, plugins/extensions (loaded here so import
+    failures are reported, not fatal), hooks/providers, actions, and Playwright."""
     ok = True
     print("WAT doctor")
     print(f"  config root : {cfg.root}")
     print(f"  base_url    : {cfg.base_url}")
     print(f"  flows_dir   : {cfg.flows_path()}")
     print(f"  log_dir     : {cfg.log_dir or '(temp default)'}")
-    print(f"  actions     : {len(REGISTRY.names())} registered")
+
+    core_actions = len(REGISTRY.names())
+    ext_results = plugins.load_reporting(list(cfg.extensions), cfg.root)
+    plug_results = plugins.load_reporting(list(cfg.plugins), cfg.root)
+
+    def _report(label: str, results: list) -> bool:
+        all_ok = True
+        if not results:
+            print(f"  {label:<12}: (none)")
+            return True
+        for i, (name, good, err) in enumerate(results):
+            lbl = label if i == 0 else ""
+            if good:
+                print(f"  {lbl:<12}: {name} ✅")
+            else:
+                all_ok = False
+                print(f"  {lbl:<12}: {name} ❌  {err}")
+        return all_ok
+
+    ok &= _report("extensions", ext_results)
+    ok &= _report("plugins", plug_results)
+
+    # Hook / provider wiring — confirms a plugin actually registered something.
+    counts = ", ".join(f"{p}={len(REGISTRY.hooks(p))}" for p in HOOK_PHASES)
+    print(f"  hooks       : {counts}")
+    print(f"  reset hook  : {'yes' if REGISTRY.get_reset_hook() else 'no'}")
+    print(f"  login prov. : {'yes' if REGISTRY.get_login_provider() else 'no'}")
+    added = len(REGISTRY.names()) - core_actions
+    print(f"  actions     : {len(REGISTRY.names())} registered ({core_actions} core + {added} from ext/plugins)")
+
     try:
         import playwright  # noqa: F401
 
