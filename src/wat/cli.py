@@ -30,7 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--list", action="store_true", help="List discovered flows and exit.")
     mode.add_argument("--print-actions", action="store_true", help="Print the action catalog and exit.")
     mode.add_argument("--doctor", action="store_true", help="Check the environment and exit.")
+    mode.add_argument("--migrate", action="store_true", help="Report/convert legacy flows to canonical form.")
 
+    p.add_argument("--write", action="store_true", help="With --migrate: rewrite flow files in place.")
     p.add_argument("--validate-only", action="store_true", help="Validate flows without running a browser.")
     p.add_argument("--label", help="Filter --all/--list by label prefix.")
     p.add_argument("--root", type=Path, default=Path.cwd(), help="App root for config discovery (default: cwd).")
@@ -63,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
         return _print_actions()
     if args.doctor:
         return _doctor(cfg)
+    if args.migrate:
+        return _migrate(cfg, args)
     if args.list:
         return _list(cfg, args.label)
     if args.validate_only:
@@ -136,6 +140,28 @@ def _validate(cfg: WatConfig, args: argparse.Namespace) -> int:
             print(f"✅ {Path(path).name}")
     print(f"\n{total_errors} error(s) across {len(targets)} flow(s).")
     return 1 if total_errors else 0
+
+
+def _migrate(cfg: WatConfig, args: argparse.Namespace) -> int:
+    from .migrate import migrate_dir
+
+    flows_dir = args.flow.parent if args.flow else cfg.flows_path()
+    results = migrate_dir(flows_dir, write=args.write, registry=REGISTRY)
+    total_notes = 0
+    for name, report in sorted(results.items()):
+        if report:
+            total_notes += len(report)
+            print(f"⚠ {name}")
+            for item in report:
+                loc = f"step {item['step']} ({item['action']})" if item["step"] is not None else "flow"
+                print(f"     {loc}: {item['note']}")
+        else:
+            print(f"✓ {name}")
+    verb = "rewrote" if args.write else "analyzed"
+    print(f"\n{verb} {len(results)} flow(s); {total_notes} item(s) need review.")
+    if not args.write:
+        print("Re-run with --write to apply the canonical rewrite.")
+    return 0
 
 
 def _print_actions() -> int:
