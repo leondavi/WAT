@@ -15,7 +15,7 @@ from typing import Any
 
 from .config import WatConfig
 
-# Map friendly browser names to (playwright_type, channel).
+# Map friendly browser names to (playwright_type, default channel).
 _BROWSERS = {
     "chromium": ("chromium", None),
     "chrome": ("chromium", "chrome"),
@@ -23,6 +23,25 @@ _BROWSERS = {
     "firefox": ("firefox", None),
     "webkit": ("webkit", None),
 }
+
+
+def build_launch_kwargs(config: WatConfig) -> tuple[str, dict[str, Any]]:
+    """Return (playwright_browser_kind, launch_kwargs) for a config.
+
+    Pure and side-effect-free so the headed / slow-mo / devtools / channel logic can
+    be unit-tested without launching a browser.
+    """
+    kind, default_channel = _BROWSERS.get(config.browser, ("chromium", None))
+    kwargs: dict[str, Any] = {"headless": config.headless}
+    channel = config.channel or default_channel
+    if channel:
+        kwargs["channel"] = channel
+    if config.slow_mo_ms > 0:
+        kwargs["slow_mo"] = config.slow_mo_ms
+    # devtools only makes sense for a visible chromium session.
+    if config.devtools and not config.headless and kind == "chromium":
+        kwargs["devtools"] = True
+    return kind, kwargs
 
 
 class Driver:
@@ -35,6 +54,7 @@ class Driver:
         self.browser: Any = None
         self.context: Any = None
         self.page: Any = None
+        self._stream: bool = False  # stream browser signals to the log live (set in start())
         # Diagnostic buffers (drained by assertions / reporting).
         self.console_messages: list[dict[str, str]] = []
         self.page_errors: list[str] = []
@@ -46,19 +66,14 @@ class Driver:
         """Launch the browser, open a traced context, and wire diagnostic listeners."""
         from playwright.sync_api import sync_playwright
 
-        kind, channel = _BROWSERS.get(self.config.browser, ("chromium", None))
+        kind, launch_kwargs = build_launch_kwargs(self.config)
+        self._stream = self.config.stream_console_effective()
         self._pw = sync_playwright().start()
         launcher = getattr(self._pw, kind)
-        launch_kwargs: dict[str, Any] = {"headless": self.config.headless}
-        if channel:
-            launch_kwargs["channel"] = channel
-        if self.config.slow_mo_ms > 0:
-            launch_kwargs["slow_mo"] = self.config.slow_mo_ms
-        # devtools only makes sense for a visible chromium session.
-        if self.config.devtools and not self.config.headless and kind == "chromium":
-            launch_kwargs["devtools"] = True
         mode = "headed" if not self.config.headless else "headless"
         extra = f", slow_mo={self.config.slow_mo_ms}ms" if self.config.slow_mo_ms else ""
+        if launch_kwargs.get("channel"):
+            extra += f", channel={launch_kwargs['channel']}"
         self.log.wat(f"launching {self.config.browser} ({mode}{extra})")
         self.browser = launcher.launch(**launch_kwargs)
 
@@ -109,7 +124,11 @@ class Driver:
         return [m["text"] for m in self.console_messages if rx.search(m["text"])]
 
     def drain_diagnostics(self) -> None:
-        """Forward buffered browser signals to the [BROWSER] log channel."""
+        """Forward buffered browser signals to the [BROWSER] log channel.
+
+        No-op when streaming live (they were already logged as they arrived)."""
+        if self._stream:
+            return
         for msg in self.console_messages:
             if msg["type"] in ("error", "warning"):
                 self.log.browser(f"console.{msg['type']}: {msg['text']}")
@@ -121,16 +140,35 @@ class Driver:
     # -- internals ---------------------------------------------------------
 
     def _wire_listeners(self, page: Any) -> None:
-        page.on("console", lambda m: self.console_messages.append({"type": m.type, "text": m.text}))
-        page.on("pageerror", lambda e: self.page_errors.append(str(e)))
-        page.on("requestfailed", lambda r: self.network_failures.append(
-            {"url": r.url, "status": "FAILED", "error": getattr(r.failure, "error_text", None)}))
+        page.on("console", self._on_console)
+        page.on("pageerror", self._on_pageerror)
+        page.on("requestfailed", self._on_requestfailed)
         page.on("response", self._on_response)
+
+    def _on_console(self, msg: Any) -> None:
+        entry = {"type": msg.type, "text": msg.text}
+        self.console_messages.append(entry)
+        # Stream errors/warnings live so a watcher sees them the instant they occur.
+        if self._stream and msg.type in ("error", "warning"):
+            self.log.browser(f"console.{msg.type}: {msg.text}")
+
+    def _on_pageerror(self, err: Any) -> None:
+        self.page_errors.append(str(err))
+        if self._stream:
+            self.log.browser(f"pageerror: {err}")
+
+    def _on_requestfailed(self, req: Any) -> None:
+        entry = {"url": req.url, "status": "FAILED", "error": getattr(req.failure, "error_text", None)}
+        self.network_failures.append(entry)
+        if self._stream:
+            self.log.browser(f"request failed: {req.url}")
 
     def _on_response(self, response: Any) -> None:
         try:
             if response.status >= 400:
                 self.network_failures.append({"url": response.url, "status": response.status})
+                if self._stream:
+                    self.log.browser(f"HTTP {response.status}: {response.url}")
         except Exception:
             pass
 

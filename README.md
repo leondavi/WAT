@@ -4,16 +4,6 @@
 
 # WAT — Web Auto Tester
 
-```
-        ▲
-     ↖  │  ↗
-        │
-   ◄────●────►      five arrows, inside → outside
-        │
-     ↙  │  ↘
-        ▼
-```
-
 **JSON-flow-driven, Playwright-based browser testing for complex, multi-step flows.**
 
 </div>
@@ -53,9 +43,16 @@ tools/WAT/.wat-venv/bin/wat --flow flows/fl_smoke.json --base-url http://localho
 wat --flow flows/fl_smoke.json --live          # or: --headed [--slow-mo 500] [--devtools]
 ```
 
-Runs are **headless** by default (CI-friendly) and **live/headed** on demand
-(`--live` = visible browser + slow-mo; `--headed`, `--slow-mo <ms>`, `--devtools`
-give finer control) — the same flow files work in both.
+Runs are **headless** by default (CI-friendly) and **live/headed** on demand — the
+same flow files work in both:
+
+- `--live` — visible browser + slow-mo, the quickest way to watch a run.
+- `--headed`, `--slow-mo <ms>`, `--devtools`, `--channel chrome|msedge` — finer control.
+- **Live logging** (auto-on when headed): each step's intent is logged before it runs
+  (`→ [n] action target`), and browser `console.error`/`pageerror`/HTTP failures stream
+  to the `[BROWSER]` channel the instant they happen. Force it with `--stream-console`.
+- `--pause-on-failure` — hold the headed browser open (Playwright Inspector) on failure
+  to inspect the live page.
 
 ## Documentation
 

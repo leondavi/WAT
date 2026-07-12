@@ -73,6 +73,7 @@ def run_flow(flow_path: str | Path, config: WatConfig, registry: Registry = REGI
                                     driver=driver, log=log, exc=exc,
                                     failed_index=failed_index, failed_action=failed_action)
             log.wat(f"FAILED at step {failed_index} ({failed_action}): {exc}", level="error")
+            _maybe_pause_on_failure(driver, config, log)
             driver.stop(save_trace=True, trace_path=log.dir / "trace.zip")
             return 1
 
@@ -89,6 +90,11 @@ def _run_step(ctx: StepContext, index: int, registry: Registry, soft_failures: l
     if _should_skip(ctx):
         ctx.log.step({"index": index, "action": action, "status": "skipped", "duration_ms": 0})
         return
+
+    # In a live run, announce each step's intent BEFORE it runs so a watcher can
+    # correlate what they see in the headed browser with the log.
+    if ctx.config.verbose_steps_effective():
+        ctx.log.wat(f"→ [{index}] {action} {_describe(step)}".rstrip())
 
     for hook in registry.hooks("before_step"):
         hook(ctx)
@@ -209,3 +215,28 @@ def _safe_hook(hook: Any, ctx: StepContext, log: RunLogger, name: str) -> None:
         hook(ctx)
     except Exception as exc:  # a flaky reset must never mask real assertions
         log.wat(f"{name} hook failed (ignored): {exc}", level="warn")
+
+
+def _describe(step: dict) -> str:
+    """A short 'what this step targets' string for live per-step logging."""
+    parts = []
+    if step.get("selector"):
+        by = step.get("by", "css")
+        parts.append(f"{by}={step['selector']!r}")
+    for key in ("url", "value", "event", "pattern", "count", "seconds"):
+        if key in step:
+            val = str(step[key])
+            parts.append(f"{key}={val[:60]!r}" if key == "value" else f"{key}={val}")
+    return " ".join(parts)
+
+
+def _maybe_pause_on_failure(driver: Driver, config: WatConfig, log: RunLogger) -> None:
+    """In a headed run with pause_on_failure, hold the browser open (Playwright
+    Inspector) so the failure can be inspected live. No-op when headless."""
+    if not config.pause_on_failure or config.headless:
+        return
+    try:
+        log.wat("pausing on failure — resume in the Playwright Inspector to continue", level="warn")
+        driver.page.pause()
+    except Exception:
+        pass

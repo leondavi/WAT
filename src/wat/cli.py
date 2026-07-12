@@ -48,6 +48,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--slow-mo", dest="slow_mo_ms", type=int, help="Delay each action by N ms.")
     p.add_argument("--devtools", dest="devtools", action="store_const", const=True, default=None,
                    help="Open devtools (headed chromium).")
+    p.add_argument("--channel", help="Branded browser channel, e.g. chrome, msedge, chrome-beta.")
+    p.add_argument("--pause-on-failure", dest="pause_on_failure", action="store_const", const=True,
+                   default=None, help="Headed: hold the browser open on failure to inspect.")
+    p.add_argument("--stream-console", dest="stream_console", action="store_const", const=True,
+                   default=None, help="Stream browser console/errors live (auto-on when headed).")
+    p.add_argument("--trace", choices=["off", "on", "on-failure"], help="Playwright trace capture.")
+    p.add_argument("--video", choices=["off", "on", "on-failure"], help="Video capture.")
     p.add_argument("--wait-ms", type=int)
     p.add_argument("--flows-dir")
     p.add_argument("--app", dest="app_name")
@@ -56,7 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _overrides(args: argparse.Namespace) -> dict:
-    keys = ("base_url", "browser", "headless", "slow_mo_ms", "devtools",
+    keys = ("base_url", "browser", "channel", "headless", "slow_mo_ms", "devtools",
+            "pause_on_failure", "stream_console", "trace", "video",
             "wait_ms", "flows_dir", "app_name", "log_dir")
     overrides = {k: getattr(args, k) for k in keys if getattr(args, k) is not None}
     # --live is a convenience: visible browser + gentle slow-mo (unless overridden).

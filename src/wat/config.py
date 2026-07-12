@@ -43,12 +43,18 @@ class WatConfig:
 
     # Browser / driver.
     browser: str = "chromium"             # chromium | firefox | webkit
+    channel: str | None = None            # branded channel, e.g. "chrome" / "msedge" / "chrome-beta"
     headless: bool = True                 # False = live/headed, visible browser
     slow_mo_ms: int = 0                    # delay each action by N ms (watch a live run)
     devtools: bool = False                 # open devtools (chromium, headed only)
     wait_ms: int = 10_000
     trace: str = "on-failure"             # off | on | on-failure
     video: str = "off"                    # off | on | on-failure
+
+    # Live-run ergonomics.
+    stream_console: bool | None = None     # stream [BROWSER] console/pageerror live; None = auto (on when headed)
+    verbose_steps: bool | None = None      # log each step's intent before running; None = auto (on when live)
+    pause_on_failure: bool = False         # in a headed run, hold the browser open on failure to inspect
 
     # Step robustness defaults (per-step keys override these).
     step_retries: int = 0
@@ -77,6 +83,18 @@ class WatConfig:
 
     def artifacts_path(self) -> Path:
         return (Path(self.root) / self.artifacts_dir).resolve()
+
+    def is_live(self) -> bool:
+        """A 'live' run is one a human is watching: headed, or slowed down."""
+        return (not self.headless) or self.slow_mo_ms > 0
+
+    def stream_console_effective(self) -> bool:
+        """Whether to stream browser console/errors live (auto-on for live runs)."""
+        return self.is_live() if self.stream_console is None else self.stream_console
+
+    def verbose_steps_effective(self) -> bool:
+        """Whether to log each step's intent before running (auto-on for live runs)."""
+        return self.is_live() if self.verbose_steps is None else self.verbose_steps
 
 
 # Boolean-ish env values.
