@@ -42,3 +42,7 @@ base_url = "http://localhost:4000"
 browser = "chromium"
 headless = true
 wait_ms = 10000
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

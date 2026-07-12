@@ -60,7 +60,7 @@ class RunLogger:
 
     def __init__(self, *, app: str, log_dir: str | None, flow_stem: str,
                  level: str = "info", echo: bool = True, keep_runs: int = 50):
-        self.app = app
+        self.app_name = app  # NB: not `self.app` — that would shadow the app() channel method
         self.flow_stem = flow_stem
         self.level = _LEVELS.get(level, 20)
         self.echo = echo
