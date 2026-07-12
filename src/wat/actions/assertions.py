@@ -187,7 +187,7 @@ def assert_no_network_errors(ctx: StepContext) -> dict:
 @register_action("assert_js", required=("script",), group="assert",
                  description="Evaluate JS; pass on truthy or {pass:true}. Promise-aware.")
 def assert_js(ctx: StepContext) -> dict:
-    result = ctx.page.evaluate(as_callable(str(ctx.field("script", required=True))))
+    result = ctx.page.evaluate(as_callable(str(ctx.field("script", required=True, lenient=True))))
     if isinstance(result, dict):
         verdict = result.get("pass", True)
         return {"pass": verdict is not False, "reason": result.get("reason")}

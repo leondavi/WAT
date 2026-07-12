@@ -68,12 +68,15 @@ def canonicalize_step(step: dict[str, Any], index: int = 0) -> dict[str, Any]:
     for legacy, canonical in _FIELD_ALIASES.items():
         if legacy in s and canonical not in s:
             s[canonical] = s[legacy]
-    # sleep: legacy `ms` -> canonical `seconds`.
-    if s.get("action") == "sleep" and "ms" in s and "seconds" not in s:
-        try:
-            s["seconds"] = float(s["ms"]) / 1000.0
-        except (TypeError, ValueError):
-            pass
+    # sleep: legacy millisecond fields `ms` / `duration` -> canonical `seconds`.
+    if s.get("action") == "sleep" and "seconds" not in s:
+        for ms_field in ("ms", "duration"):
+            if ms_field in s:
+                try:
+                    s["seconds"] = float(s[ms_field]) / 1000.0
+                except (TypeError, ValueError):
+                    pass
+                break
     return s
 
 
@@ -141,14 +144,17 @@ def validate_file(path: str | Path, registry: Registry = REGISTRY) -> list[str]:
     return validate_flow(flow, registry)
 
 
-# Documentation-only fields never carry live {{var}} references.
-_DOC_FIELDS = {"comment", "description", "_comment"}
+# Fields not scanned for live {{var}} references:
+#  - doc fields carry prose;
+#  - `script`/`if`/`skip_if` carry JS where {{...}} is usually literal app content
+#    (interpolated leniently at runtime — unknown placeholders stay literal).
+_NO_VAR_CHECK_FIELDS = {"comment", "description", "_comment", "script", "if", "skip_if"}
 
 
 def _referenced_vars(step: dict[str, Any]) -> set[str]:
     refs: set[str] = set()
     for key, value in step.items():
-        if key in _DOC_FIELDS:
+        if key in _NO_VAR_CHECK_FIELDS:
             continue
         if isinstance(value, str):
             refs.update(_VAR_REF.findall(value))

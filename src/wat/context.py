@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .config import WatConfig
-from .interpolate import maybe_interpolate
+from .interpolate import maybe_interpolate, maybe_interpolate_lenient
 
 
 # Schemes/prefixes that are already fully-qualified and must not be prefixed with base_url.
@@ -57,8 +57,13 @@ class StepContext:
         """Resolve a flow path against the effective base URL, interpolating first."""
         return resolve_url(self.base_url, self.resolve(path))
 
-    def field(self, name: str, default: Any = None, *, required: bool = False) -> Any:
-        """Read ``self.step[name]`` with interpolation; optionally require it."""
+    def field(self, name: str, default: Any = None, *, required: bool = False,
+              lenient: bool = False) -> Any:
+        """Read ``self.step[name]`` with interpolation; optionally require it.
+
+        With ``lenient=True``, unknown ``{{...}}`` placeholders are left literal
+        (used for ``script`` fields, where braces are often app/JS content).
+        """
         if name not in self.step:
             if required:
                 from .errors import StepFailure, SOURCE_FLOW_AUTHORING
@@ -68,6 +73,8 @@ class StepContext:
                     source=SOURCE_FLOW_AUTHORING,
                 )
             return default
+        if lenient:
+            return maybe_interpolate_lenient(self.step[name], self.store)
         return self.resolve(self.step[name])
 
     def locator(self, step: dict[str, Any] | None = None) -> Any:

@@ -39,7 +39,8 @@ def as_callable(script: str) -> str:
 
 
 def _run_script(ctx: StepContext):
-    script = ctx.field("script", required=True)
+    # lenient: {{...}} inside a script is usually literal JS/app-template content.
+    script = ctx.field("script", required=True, lenient=True)
     return ctx.page.evaluate(as_callable(str(script)))
 
 

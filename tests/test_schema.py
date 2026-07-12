@@ -70,6 +70,18 @@ def test_validate_ignores_comment_field_vars():
     assert validate_flow(flow) == []
 
 
+def test_validate_ignores_script_field_vars():
+    # {{column}} inside a script is literal app-template content, not a WAT var.
+    flow = {"steps": [{"action": "eval_js", "script": "el.value = 'the {{column}} data'"}]}
+    assert validate_flow(flow) == []
+
+
+def test_sleep_duration_alias_maps_to_seconds():
+    step = canonicalize_step({"action": "sleep", "duration": 500})
+    assert step["seconds"] == 0.5
+    assert validate_flow({"steps": [step]}) == []
+
+
 def test_load_flow_rejects_bad_name(tmp_path):
     bad = tmp_path / "not_a_flow.json"
     bad.write_text(json.dumps({"steps": []}))

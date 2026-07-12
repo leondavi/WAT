@@ -38,3 +38,21 @@ def interpolate(value: str, store: Mapping[str, Any]) -> str:
 def maybe_interpolate(value: Any, store: Mapping[str, Any]) -> Any:
     """Interpolate only if *value* is a string; pass other types through unchanged."""
     return interpolate(value, store) if isinstance(value, str) else value
+
+
+def interpolate_lenient(value: str, store: Mapping[str, Any]) -> str:
+    """Replace only KNOWN ``{{name}}`` placeholders; leave unknown ones literal.
+
+    Used for ``script`` fields, where ``{{...}}`` is often literal JS or app-template
+    text (e.g. a Liquid/Jinja template typed into a form) rather than a WAT variable.
+    A captured variable still interpolates; anything else is passed through verbatim.
+    """
+    def _replace(match: "re.Match[str]") -> str:
+        key = match.group(1)
+        return str(store[key]) if key in store else match.group(0)
+
+    return _PLACEHOLDER.sub(_replace, value)
+
+
+def maybe_interpolate_lenient(value: Any, store: Mapping[str, Any]) -> Any:
+    return interpolate_lenient(value, store) if isinstance(value, str) else value

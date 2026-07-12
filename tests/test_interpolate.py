@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from wat.errors import StepFailure
-from wat.interpolate import interpolate, maybe_interpolate
+from wat.interpolate import interpolate, maybe_interpolate, interpolate_lenient
 
 
 def test_replaces_known_vars():
@@ -29,3 +29,13 @@ def test_maybe_interpolate_passes_through_non_strings():
 
 def test_no_placeholder_is_identity():
     assert interpolate("plain", {}) == "plain"
+
+
+def test_lenient_replaces_known_leaves_unknown_literal():
+    # app-template braces stay literal; captured vars still interpolate
+    src = "Analyze the {{column}} for {{user}}"
+    assert interpolate_lenient(src, {"user": "bob"}) == "Analyze the {{column}} for bob"
+
+
+def test_lenient_never_raises_on_unknown():
+    assert interpolate_lenient("{{anything}}", {}) == "{{anything}}"
