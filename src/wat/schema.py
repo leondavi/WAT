@@ -42,17 +42,37 @@ def load_flow(path: str | Path) -> dict[str, Any]:
     return data
 
 
+# Field aliases accepted for backward compatibility with the legacy Selenium forks.
+# Keys are legacy names; values are the canonical names they map to.
+_FIELD_ALIASES = {
+    "text": "value",                 # Cells typed/expected value
+    "source_selector": "from_selector",  # legacy real_drag
+    "target_selector": "to_selector",    # legacy real_drag
+}
+
+
 def canonicalize_step(step: dict[str, Any], index: int = 0) -> dict[str, Any]:
     """Normalize a raw step to the canonical shape.
 
-    * ``text`` is accepted as an alias for the canonical ``value`` field.
-    * ``skip_if`` is accepted as an alias for the negated ``if`` predicate.
+    Accepts legacy field names from the old Selenium forks so existing flows keep
+    working without edits:
+
+    * ``text`` -> ``value``
+    * ``source_selector`` / ``target_selector`` -> ``from_selector`` / ``to_selector``
+    * ``sleep`` with ``ms`` -> ``seconds`` (ms / 1000)
     """
     if not isinstance(step, dict) or "action" not in step:
         raise SchemaError(f"step #{index} must be an object with an 'action' key: {step!r}")
     s = dict(step)
-    if "text" in s and "value" not in s:
-        s["value"] = s["text"]
+    for legacy, canonical in _FIELD_ALIASES.items():
+        if legacy in s and canonical not in s:
+            s[canonical] = s[legacy]
+    # sleep: legacy `ms` -> canonical `seconds`.
+    if s.get("action") == "sleep" and "ms" in s and "seconds" not in s:
+        try:
+            s["seconds"] = float(s["ms"]) / 1000.0
+        except (TypeError, ValueError):
+            pass
     return s
 
 

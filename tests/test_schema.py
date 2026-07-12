@@ -16,6 +16,19 @@ def test_text_alias_maps_to_value():
     assert step["value"] == "hi"
 
 
+def test_real_drag_legacy_selector_aliases():
+    step = canonicalize_step({"action": "real_drag", "source_selector": "#a", "target_selector": "#b"})
+    assert step["from_selector"] == "#a" and step["to_selector"] == "#b"
+    # a real_drag flow using legacy field names now validates
+    assert validate_flow({"steps": [step]}) == []
+
+
+def test_sleep_ms_alias_maps_to_seconds():
+    step = canonicalize_step({"action": "sleep", "ms": 500})
+    assert step["seconds"] == 0.5
+    assert validate_flow({"steps": [step]}) == []
+
+
 def test_canonicalize_requires_action():
     with pytest.raises(SchemaError):
         canonicalize_step({"selector": "#x"})
