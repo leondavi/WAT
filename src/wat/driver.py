@@ -52,7 +52,14 @@ class Driver:
         launch_kwargs: dict[str, Any] = {"headless": self.config.headless}
         if channel:
             launch_kwargs["channel"] = channel
-        self.log.wat(f"launching {self.config.browser} (headless={self.config.headless})")
+        if self.config.slow_mo_ms > 0:
+            launch_kwargs["slow_mo"] = self.config.slow_mo_ms
+        # devtools only makes sense for a visible chromium session.
+        if self.config.devtools and not self.config.headless and kind == "chromium":
+            launch_kwargs["devtools"] = True
+        mode = "headed" if not self.config.headless else "headless"
+        extra = f", slow_mo={self.config.slow_mo_ms}ms" if self.config.slow_mo_ms else ""
+        self.log.wat(f"launching {self.config.browser} ({mode}{extra})")
         self.browser = launcher.launch(**launch_kwargs)
 
         context_kwargs: dict[str, Any] = {"viewport": {"width": 1440, "height": 1024}}

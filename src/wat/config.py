@@ -43,7 +43,9 @@ class WatConfig:
 
     # Browser / driver.
     browser: str = "chromium"             # chromium | firefox | webkit
-    headless: bool = True
+    headless: bool = True                 # False = live/headed, visible browser
+    slow_mo_ms: int = 0                    # delay each action by N ms (watch a live run)
+    devtools: bool = False                 # open devtools (chromium, headed only)
     wait_ms: int = 10_000
     trace: str = "on-failure"             # off | on | on-failure
     video: str = "off"                    # off | on | on-failure

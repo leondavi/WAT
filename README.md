@@ -45,10 +45,17 @@ git submodule update --init
 #    the package + browsers, and self-verifies.
 python tools/WAT/install.py --app myapp --extras liveview
 
-# 3. Run a flow.
+# 3. Run a flow (headless by default).
 tools/WAT/.wat-venv/bin/wat --flow flows/fl_smoke.json --base-url http://localhost:4000
 #   ...or:  python -m wat --flow flows/fl_smoke.json
+
+# 4. Watch it live in a visible browser (headed + slow-mo).
+wat --flow flows/fl_smoke.json --live          # or: --headed [--slow-mo 500] [--devtools]
 ```
+
+Runs are **headless** by default (CI-friendly) and **live/headed** on demand
+(`--live` = visible browser + slow-mo; `--headed`, `--slow-mo <ms>`, `--devtools`
+give finer control) — the same flow files work in both.
 
 ## Documentation
 

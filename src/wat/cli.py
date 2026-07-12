@@ -41,7 +41,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--base-url")
     p.add_argument("--browser", choices=["chromium", "chrome", "edge", "firefox", "webkit"])
     p.add_argument("--headless", dest="headless", action="store_const", const=True, default=None)
-    p.add_argument("--headed", dest="headless", action="store_const", const=False)
+    p.add_argument("--headed", dest="headless", action="store_const", const=False,
+                   help="Run a visible (live) browser.")
+    p.add_argument("--live", action="store_true",
+                   help="Live mode: headed + slow-mo (250ms) so you can watch the run.")
+    p.add_argument("--slow-mo", dest="slow_mo_ms", type=int, help="Delay each action by N ms.")
+    p.add_argument("--devtools", dest="devtools", action="store_const", const=True, default=None,
+                   help="Open devtools (headed chromium).")
     p.add_argument("--wait-ms", type=int)
     p.add_argument("--flows-dir")
     p.add_argument("--app", dest="app_name")
@@ -50,8 +56,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _overrides(args: argparse.Namespace) -> dict:
-    keys = ("base_url", "browser", "headless", "wait_ms", "flows_dir", "app_name", "log_dir")
-    return {k: getattr(args, k) for k in keys if getattr(args, k) is not None}
+    keys = ("base_url", "browser", "headless", "slow_mo_ms", "devtools",
+            "wait_ms", "flows_dir", "app_name", "log_dir")
+    overrides = {k: getattr(args, k) for k in keys if getattr(args, k) is not None}
+    # --live is a convenience: visible browser + gentle slow-mo (unless overridden).
+    if getattr(args, "live", False):
+        overrides.setdefault("headless", False)
+        if args.headless is None:
+            overrides["headless"] = False
+        overrides.setdefault("slow_mo_ms", 250)
+    return overrides
 
 
 def main(argv: list[str] | None = None) -> int:
