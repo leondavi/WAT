@@ -44,6 +44,8 @@ class WatConfig:
     # Browser / driver.
     browser: str = "chromium"             # chromium | firefox | webkit
     channel: str | None = None            # branded channel, e.g. "chrome" / "msedge" / "chrome-beta"
+    viewport_width: int = 1440
+    viewport_height: int = 1024
     headless: bool = True                 # False = live/headed, visible browser
     slow_mo_ms: int = 0                    # delay each action by N ms (watch a live run)
     devtools: bool = False                 # open devtools (chromium, headed only)
@@ -55,6 +57,10 @@ class WatConfig:
     stream_console: bool | None = None     # stream [BROWSER] console/pageerror live; None = auto (on when headed)
     verbose_steps: bool | None = None      # log each step's intent before running; None = auto (on when live)
     pause_on_failure: bool = False         # in a headed run, hold the browser open on failure to inspect
+
+    # --all orchestration.
+    workers: int = 1                       # parallel flows (each worker uses its own browser)
+    fail_fast: bool = False                # stop the run on the first failing flow
 
     # Step robustness defaults (per-step keys override these).
     step_retries: int = 0

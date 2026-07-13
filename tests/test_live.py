@@ -55,6 +55,12 @@ def test_firefox_kind():
     assert build_launch_kwargs(WatConfig(browser="webkit"))[0] == "webkit"
 
 
+def test_viewport_defaults_and_override():
+    assert (WatConfig().viewport_width, WatConfig().viewport_height) == (1440, 1024)
+    cfg = WatConfig(viewport_width=800, viewport_height=600)
+    assert cfg.viewport_width == 800 and cfg.viewport_height == 600
+
+
 # ---------------------------------------------------------------------------
 # Live-mode config derivations
 # ---------------------------------------------------------------------------

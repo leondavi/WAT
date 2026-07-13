@@ -1,8 +1,8 @@
 # Authoring flows
 
 A flow is a JSON list of steps run against a browser. Start from
-[`flows/fl_starter_template.json`](../flows/fl_starter_template.json) and see
-[`CONTRACT.md`](../CONTRACT.md) for the full schema.
+[`docs/flow-template.json`](flow-template.json) (copy it to `flows/fl_<name>.json`)
+and see [`CONTRACT.md`](../CONTRACT.md) for the full schema.
 
 ## Minimal flow
 

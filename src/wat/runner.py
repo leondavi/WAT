@@ -9,34 +9,64 @@ that let flows absorb flakiness declaratively instead of with ad-hoc sleeps.
 from __future__ import annotations
 
 import time
-from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from .config import WatConfig
 from .context import StepContext
-from .driver import Driver
+from .driver import BrowserSession, Driver
 from .errors import AssertionFailure, StepFailure, SOURCE_APP, SOURCE_BROWSER
-from .logging import RunLogger
+from .logging import ConsoleLog, RunLogger
 from .registry import REGISTRY, Registry
 from .reporting import write_failure_artifacts, write_success_summary
 from .schema import load_flow
 
 
+@dataclass
+class FlowResult:
+    """Outcome of one flow run — the unit aggregated into summaries and reports."""
+
+    path: Path
+    name: str
+    returncode: int          # 0 pass, 1 fail
+    status: str              # "pass" | "fail"
+    duration_ms: int
+    source: str | None = None        # failure classification (app/browser/...)
+    failed_step: int | None = None
+    message: str | None = None
+    log_dir: Path | None = None
+
+
 def run_flow(flow_path: str | Path, config: WatConfig, registry: Registry = REGISTRY) -> int:
-    """Run one flow file. Returns 0 on success, 1 on failure."""
+    """Run one flow file. Returns 0 on success, 1 on failure (back-compat wrapper)."""
+    return execute_flow(flow_path, config, registry).returncode
+
+
+def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = REGISTRY,
+                 session: BrowserSession | None = None) -> FlowResult:
+    """Run one flow and return a rich :class:`FlowResult`.
+
+    If *session* is given, the flow runs in a fresh context on that shared browser
+    (fast for ``--all``); otherwise a private browser is launched just for this flow.
+    """
     flow_path = Path(flow_path)
     flow = load_flow(flow_path)
     flow["__path__"] = str(flow_path)
     stem = flow_path.stem
+    name = flow.get("name", stem)
+    started = time.monotonic()
 
     soft_failures: list[str] = []
     with RunLogger(app=config.app_name, log_dir=config.log_dir, flow_stem=stem,
                    level=config.log_level, keep_runs=config.keep_runs) as log:
-        log.wat(f"flow '{flow.get('name', stem)}' — {len(flow['steps'])} steps @ {config.base_url}")
-        driver = Driver(config, log)
+        log.wat(f"flow '{name}' - {len(flow['steps'])} steps @ {config.base_url}")
+        driver = Driver(config, log, session=session)
         failed_index: int | None = None
         failed_action: str | None = None
+        summary: dict[str, Any] = {}
+        rc = 0
         try:
             driver.start()
             ctx = StepContext(page=driver.page, browser_context=driver.context, driver=driver,
@@ -62,20 +92,64 @@ def run_flow(flow_path: str | Path, config: WatConfig, registry: Registry = REGI
                 )
 
             driver.drain_diagnostics()
-            write_success_summary(ctx=ctx, log=log, steps_run=len(flow["steps"]))
+            summary = write_success_summary(ctx=ctx, log=log, steps_run=len(flow["steps"]))
             log.wat(f"PASSED ({len(flow['steps'])} steps)")
             driver.stop(save_trace=False)
-            return 0
 
         except BaseException as exc:  # noqa: BLE001 — we classify and report every failure
+            rc = 1
             driver.drain_diagnostics()
-            write_failure_artifacts(ctx=_ctx_for_report(driver, config, flow, stem, log),
-                                    driver=driver, log=log, exc=exc,
-                                    failed_index=failed_index, failed_action=failed_action)
+            summary = write_failure_artifacts(ctx=_ctx_for_report(driver, config, flow, stem, log),
+                                              driver=driver, log=log, exc=exc,
+                                              failed_index=failed_index, failed_action=failed_action)
             log.wat(f"FAILED at step {failed_index} ({failed_action}): {exc}", level="error")
             _maybe_pause_on_failure(driver, config, log)
             driver.stop(save_trace=True, trace_path=log.dir / "trace.zip")
-            return 1
+
+        return FlowResult(
+            path=flow_path, name=name, returncode=rc,
+            status="pass" if rc == 0 else "fail",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            source=summary.get("source"), failed_step=summary.get("failed_step"),
+            message=summary.get("error"), log_dir=log.dir,
+        )
+
+
+def run_flows(flow_paths: list[Path], config: WatConfig, registry: Registry = REGISTRY) -> list[FlowResult]:
+    """Run many flows, honoring ``config.workers`` and ``config.fail_fast``.
+
+    * workers == 1: one shared browser is reused across every flow (fast startup).
+    * workers  > 1: flows run concurrently, each on its own browser (a Playwright
+      sync session cannot cross threads), so throughput scales with cores.
+    """
+    if config.workers and config.workers > 1 and len(flow_paths) > 1:
+        return _run_parallel(flow_paths, config, registry)
+    return _run_sequential(flow_paths, config, registry)
+
+
+def _run_sequential(flow_paths: list[Path], config: WatConfig, registry: Registry) -> list[FlowResult]:
+    results: list[FlowResult] = []
+    session = BrowserSession(config, ConsoleLog()).start()
+    try:
+        for path in flow_paths:
+            result = execute_flow(path, config, registry, session=session)
+            results.append(result)
+            if config.fail_fast and result.returncode != 0:
+                break
+    finally:
+        session.close()
+    return results
+
+
+def _run_parallel(flow_paths: list[Path], config: WatConfig, registry: Registry) -> list[FlowResult]:
+    # Each task launches its own browser (sessions are thread-bound). fail_fast in
+    # parallel means "stop submitting more once one fails".
+    results: list[FlowResult] = []
+    with ThreadPoolExecutor(max_workers=config.workers) as pool:
+        futures = {pool.submit(execute_flow, path, config, registry): path for path in flow_paths}
+        for future in futures:  # preserves submission order
+            results.append(future.result())
+    return results
 
 
 # ---------------------------------------------------------------------------

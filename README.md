@@ -54,6 +54,17 @@ same flow files work in both:
 - `--pause-on-failure` — hold the headed browser open (Playwright Inspector) on failure
   to inspect the live page.
 
+## Running many flows
+
+```bash
+wat --all                       # one browser reused across all flows (fast startup)
+wat --all --workers 4           # run in parallel (each worker its own browser)
+wat --all --label sheet/        # filter by label prefix
+wat --all --grep dataset        # filter by substring (file name / flow name / label)
+wat --all --fail-fast           # stop on the first failure
+wat --all --report out.xml      # JUnit report for CI (--report-format junit|json)
+```
+
 ## Documentation
 
 - [`CONTRACT.md`](CONTRACT.md) — the canonical flow schema + action contract (the source of truth).

@@ -44,7 +44,7 @@ def test_doctor_reports_extensions_and_hooks(tmp_path, capsys):
     (tmp_path / "wat.toml").write_text('extensions = ["liveview"]\n')
     rc = main(["--doctor", "--root", str(tmp_path)])
     out = capsys.readouterr().out
-    assert "extensions" in out and "liveview ✅" in out
+    assert "extensions" in out and "liveview  ok" in out
     assert "hooks" in out and "reset hook" in out
     assert rc == 0  # playwright installed in the test venv
 
@@ -55,5 +55,20 @@ def test_doctor_flags_broken_plugin(tmp_path, capsys):
     (tmp_path / "wat.toml").write_text('plugins = ["nope.py"]\n')
     rc = main(["--doctor", "--root", str(tmp_path)])
     out = capsys.readouterr().out
-    assert "nope.py ❌" in out
+    assert "nope.py  FAILED" in out
     assert rc == 1  # a broken plugin makes doctor fail
+
+
+def test_workers_and_fail_fast_and_report_flags():
+    ov = _parse(["--all", "--workers", "4", "--fail-fast"])
+    assert ov["workers"] == 4 and ov["fail_fast"] is True
+
+
+def test_no_emojis_in_cli_or_installer():
+    import re
+    from pathlib import Path
+
+    emoji = re.compile("[\U0001F000-\U0001FAFF☀-➿✅❌⚠✓✗]")
+    root = Path(__file__).resolve().parent.parent
+    for rel in ["src/wat/cli.py", "install.py", "src/wat/logging.py"]:
+        assert not emoji.search((root / rel).read_text(encoding="utf-8")), f"emoji in {rel}"

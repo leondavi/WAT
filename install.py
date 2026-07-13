@@ -50,11 +50,11 @@ def _say(msg: str) -> None:
 
 
 def _ok(msg: str) -> None:
-    print(f"[wat-install] ✅ {msg}", flush=True)
+    print(f"[wat-install] OK: {msg}", flush=True)
 
 
 def _fail(msg: str) -> "NoReturn":  # type: ignore[name-defined]
-    print(f"[wat-install] ❌ {msg}", file=sys.stderr, flush=True)
+    print(f"[wat-install] ERROR: {msg}", file=sys.stderr, flush=True)
     raise SystemExit(1)
 
 

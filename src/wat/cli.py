@@ -1,11 +1,13 @@
 """Command-line interface for WAT.
 
     wat --flow flows/fl_smoke.json          run one flow
-    wat --all [--label sheet/]              run all (optionally filtered by label prefix)
+    wat --all [--label p/] [--grep x]       run all (one reused browser; filter by label/substring)
+    wat --all --workers 4 --fail-fast       run in parallel; stop on first failure
+    wat --all --report out.xml              write a JUnit report (--report-format junit|json)
     wat --list                              list discovered flows
     wat --validate-only [--all|--flow F]    lint flows without a browser
     wat --print-actions                     show the registered action catalog
-    wat --doctor                            check the environment
+    wat --doctor                            check the environment + plugin/extension wiring
 
 Config comes from wat.toml / [tool.wat] / watconfig.py / WAT_* env, and any CLI flag
 below overrides it (only flags you actually pass take effect).
@@ -35,7 +37,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--write", action="store_true", help="With --migrate: rewrite flow files in place.")
     p.add_argument("--validate-only", action="store_true", help="Validate flows without running a browser.")
     p.add_argument("--label", help="Filter --all/--list by label prefix.")
+    p.add_argument("--grep", help="Filter --all/--list by substring of the flow file name, name, or label.")
     p.add_argument("--root", type=Path, default=Path.cwd(), help="App root for config discovery (default: cwd).")
+
+    # --all orchestration.
+    p.add_argument("--workers", type=int, help="Run flows in parallel with N workers (each its own browser).")
+    p.add_argument("--fail-fast", dest="fail_fast", action="store_const", const=True, default=None,
+                   help="Stop the run on the first failing flow.")
+    p.add_argument("--report", help="Write an aggregate report for --all to this path.")
+    p.add_argument("--report-format", choices=["junit", "json"], default="junit",
+                   help="Format for --report (default: junit).")
 
     # Config overrides (default None so unset flags don't clobber file/env config).
     p.add_argument("--base-url")
@@ -65,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _overrides(args: argparse.Namespace) -> dict:
     keys = ("base_url", "browser", "channel", "headless", "slow_mo_ms", "devtools",
             "pause_on_failure", "stream_console", "trace", "video",
-            "wait_ms", "flows_dir", "app_name", "log_dir")
+            "workers", "fail_fast", "wait_ms", "flows_dir", "app_name", "log_dir")
     overrides = {k: getattr(args, k) for k in keys if getattr(args, k) is not None}
     # --live is a convenience: visible browser + gentle slow-mo (unless overridden).
     if getattr(args, "live", False):
@@ -93,13 +104,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.migrate:
         return _migrate(cfg, args)
     if args.list:
-        return _list(cfg, args.label)
+        return _list(cfg, args)
     if args.validate_only:
         return _validate(cfg, args)
     if args.flow:
         return _run_one(cfg, args.flow)
     if args.all:
-        return _run_all(cfg, args.label)
+        return _run_all(cfg, args)
 
     build_parser().print_help()
     return 1
@@ -115,28 +126,38 @@ def _run_one(cfg: WatConfig, flow: Path) -> int:
     return run_flow(flow, cfg)
 
 
-def _run_all(cfg: WatConfig, label: str | None) -> int:
-    from .runner import run_flow
+def _run_all(cfg: WatConfig, args: argparse.Namespace) -> int:
+    from .runner import run_flows
+    from . import reports
 
-    flows = _filtered_flows(cfg, label)
+    flows = _filtered_flows(cfg, args.label, args.grep)
     if not flows:
-        print(f"No flows found in {cfg.flows_path()} (label={label!r})")
+        print(f"No flows found in {cfg.flows_path()} (label={args.label!r}, grep={args.grep!r})")
         return 1
-    print(f"Running {len(flows)} flow(s)...")
-    results = [(f, run_flow(f, cfg)) for f in flows]
-    passed = [f for f, rc in results if rc == 0]
-    failed = [f for f, rc in results if rc != 0]
+    mode = f", {cfg.workers} workers" if cfg.workers and cfg.workers > 1 else ""
+    print(f"Running {len(flows)} flow(s){mode}...")
+
+    results = run_flows(flows, cfg)
+    passed = [r for r in results if r.returncode == 0]
+    failed = [r for r in results if r.returncode != 0]
+
     print("\n" + "=" * 60)
-    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed")
-    for f in passed:
-        print(f"  ✅  {f.name}")
-    for f in failed:
-        print(f"  ❌  {f.name}")
+    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, "
+          f"{len(flows) - len(results)} skipped")
+    for r in passed:
+        print(f"  [PASS] {r.path.name}  ({r.duration_ms}ms)")
+    for r in failed:
+        why = f" - {r.source}: {r.message}" if r.message else ""
+        print(f"  [FAIL] {r.path.name}  ({r.duration_ms}ms){why}")
+
+    if args.report:
+        path = reports.write_report(results, args.report, args.report_format)
+        print(f"\nReport ({args.report_format}) written to {path}")
     return 1 if failed else 0
 
 
-def _list(cfg: WatConfig, label: str | None) -> int:
-    flows = _filtered_flows(cfg, label)
+def _list(cfg: WatConfig, args: argparse.Namespace) -> int:
+    flows = _filtered_flows(cfg, args.label, args.grep)
     if not flows:
         print(f"No flows found in {cfg.flows_path()}")
         return 0
@@ -152,17 +173,17 @@ def _list(cfg: WatConfig, label: str | None) -> int:
 
 
 def _validate(cfg: WatConfig, args: argparse.Namespace) -> int:
-    targets = [args.flow] if args.flow else _filtered_flows(cfg, args.label)
+    targets = [args.flow] if args.flow else _filtered_flows(cfg, args.label, args.grep)
     total_errors = 0
     for path in targets:
         errors = validate_file(path, REGISTRY)
         if errors:
             total_errors += len(errors)
-            print(f"❌ {Path(path).name}")
+            print(f"[FAIL] {Path(path).name}")
             for e in errors:
                 print(f"     {e}")
         else:
-            print(f"✅ {Path(path).name}")
+            print(f"[PASS] {Path(path).name}")
     print(f"\n{total_errors} error(s) across {len(targets)} flow(s).")
     return 1 if total_errors else 0
 
@@ -176,12 +197,12 @@ def _migrate(cfg: WatConfig, args: argparse.Namespace) -> int:
     for name, report in sorted(results.items()):
         if report:
             total_notes += len(report)
-            print(f"⚠ {name}")
+            print(f"[REVIEW] {name}")
             for item in report:
                 loc = f"step {item['step']} ({item['action']})" if item["step"] is not None else "flow"
                 print(f"     {loc}: {item['note']}")
         else:
-            print(f"✓ {name}")
+            print(f"[OK]     {name}")
     verb = "rewrote" if args.write else "analyzed"
     print(f"\n{verb} {len(results)} flow(s); {total_notes} item(s) need review.")
     if not args.write:
@@ -223,10 +244,10 @@ def _doctor(cfg: WatConfig) -> int:
         for i, (name, good, err) in enumerate(results):
             lbl = label if i == 0 else ""
             if good:
-                print(f"  {lbl:<12}: {name} ✅")
+                print(f"  {lbl:<12}: {name}  ok")
             else:
                 all_ok = False
-                print(f"  {lbl:<12}: {name} ❌  {err}")
+                print(f"  {lbl:<12}: {name}  FAILED  {err}")
         return all_ok
 
     ok &= _report("extensions", ext_results)
@@ -243,10 +264,10 @@ def _doctor(cfg: WatConfig) -> int:
     try:
         import playwright  # noqa: F401
 
-        print("  playwright  : installed ✅")
+        print("  playwright  : installed  ok")
     except ImportError:
         ok = False
-        print("  playwright  : MISSING ❌ — run install.py")
+        print("  playwright  : MISSING  run install.py")
     return 0 if ok else 1
 
 
@@ -254,15 +275,25 @@ def _doctor(cfg: WatConfig) -> int:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _filtered_flows(cfg: WatConfig, label: str | None) -> list[Path]:
+def _filtered_flows(cfg: WatConfig, label: str | None, grep: str | None = None) -> list[Path]:
+    """Discover flows, optionally filtered by label prefix and/or a substring (grep)
+    matched against the file name, flow name, or any label."""
     flows = find_flows(cfg.flows_path())
-    if not label:
+    if not label and not grep:
         return flows
+    needle = grep.lower() if grep else None
     out = []
     for path in flows:
         try:
-            if any(lbl.startswith(label) for lbl in flow_labels(load_flow(path))):
-                out.append(path)
-        except Exception:  # noqa: BLE001
-            pass
+            flow = load_flow(path)
+        except Exception:  # noqa: BLE001 — malformed flow: skip during filtering
+            continue
+        labels = flow_labels(flow)
+        if label and not any(lbl.startswith(label) for lbl in labels):
+            continue
+        if needle:
+            hay = " ".join([path.name, flow.get("name", ""), *labels]).lower()
+            if needle not in hay:
+                continue
+        out.append(path)
     return out

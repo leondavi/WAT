@@ -158,6 +158,35 @@ class RunLogger:
             _rmtree(old)
 
 
+class ConsoleLog:
+    """A minimal logger with the RunLogger interface that only prints (no files).
+
+    Used for session-level lines (e.g. one browser launch shared across a ``--all``
+    run) and anywhere a per-run directory is not wanted.
+    """
+
+    dir = None
+
+    def _emit(self, tag: str, message: str) -> None:
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        print(f"{ts} [{tag}] {message}", flush=True)
+
+    def wat(self, message: str, level: str = "info") -> None:
+        self._emit(WAT, message)
+
+    def browser(self, message: str) -> None:
+        self._emit(BROWSER, message)
+
+    def app(self, message: str) -> None:
+        self._emit(APP, message)
+
+    def step(self, record: dict[str, Any]) -> None:
+        self._emit(STEP, str(record))
+
+    def write_json(self, name: str, payload: dict[str, Any]) -> Path:  # pragma: no cover
+        return Path(name)
+
+
 def _rmtree(path: Path) -> None:
     import shutil
 

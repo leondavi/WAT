@@ -44,13 +44,60 @@ def build_launch_kwargs(config: WatConfig) -> tuple[str, dict[str, Any]]:
     return kind, kwargs
 
 
-class Driver:
-    """Owns a Playwright browser + context + page and the per-run diagnostic buffers."""
+class BrowserSession:
+    """A launched Playwright browser that can be reused across many flows.
+
+    Launching a browser process is the expensive part (~300-500ms); a ``--all`` run
+    creates ONE session and gives each flow its own fresh :class:`Driver` context on
+    the shared browser, cutting per-flow startup dramatically. A session is bound to
+    the thread that started it (Playwright's sync API is not thread-safe), so parallel
+    workers each use their own session.
+    """
 
     def __init__(self, config: WatConfig, log: Any):
         self.config = config
         self.log = log
         self._pw: Any = None
+        self.browser: Any = None
+
+    def start(self) -> "BrowserSession":
+        from playwright.sync_api import sync_playwright
+
+        kind, launch_kwargs = build_launch_kwargs(self.config)
+        self._pw = sync_playwright().start()
+        launcher = getattr(self._pw, kind)
+        mode = "headed" if not self.config.headless else "headless"
+        extra = f", slow_mo={self.config.slow_mo_ms}ms" if self.config.slow_mo_ms else ""
+        if launch_kwargs.get("channel"):
+            extra += f", channel={launch_kwargs['channel']}"
+        self.log.wat(f"launching {self.config.browser} ({mode}{extra})")
+        self.browser = launcher.launch(**launch_kwargs)
+        return self
+
+    def new_driver(self, log: Any) -> "Driver":
+        """Create a Driver bound to a fresh context on this shared browser."""
+        driver = Driver(self.config, log, session=self)
+        driver.start()
+        return driver
+
+    def close(self) -> None:
+        for closer in (self.browser, self._pw):
+            try:
+                if closer is not None:
+                    closer.stop() if closer is self._pw else closer.close()
+            except Exception:
+                pass
+
+
+class Driver:
+    """Owns a Playwright *context* + page (on a shared or private browser) and the
+    per-run diagnostic buffers."""
+
+    def __init__(self, config: WatConfig, log: Any, session: "BrowserSession | None" = None):
+        self.config = config
+        self.log = log
+        self._session = session
+        self._owns_session = session is None
         self.browser: Any = None
         self.context: Any = None
         self.page: Any = None
@@ -63,21 +110,20 @@ class Driver:
     # -- lifecycle ---------------------------------------------------------
 
     def start(self) -> None:
-        """Launch the browser, open a traced context, and wire diagnostic listeners."""
-        from playwright.sync_api import sync_playwright
+        """Open a traced context + page on the browser and wire diagnostic listeners.
 
-        kind, launch_kwargs = build_launch_kwargs(self.config)
+        When no session was supplied, a private one is launched (single-flow path),
+        preserving the original one-browser-per-flow behavior.
+        """
+        if self._session is None:
+            self._session = BrowserSession(self.config, self.log).start()
+            self._owns_session = True
+        self.browser = self._session.browser
         self._stream = self.config.stream_console_effective()
-        self._pw = sync_playwright().start()
-        launcher = getattr(self._pw, kind)
-        mode = "headed" if not self.config.headless else "headless"
-        extra = f", slow_mo={self.config.slow_mo_ms}ms" if self.config.slow_mo_ms else ""
-        if launch_kwargs.get("channel"):
-            extra += f", channel={launch_kwargs['channel']}"
-        self.log.wat(f"launching {self.config.browser} ({mode}{extra})")
-        self.browser = launcher.launch(**launch_kwargs)
 
-        context_kwargs: dict[str, Any] = {"viewport": {"width": 1440, "height": 1024}}
+        context_kwargs: dict[str, Any] = {
+            "viewport": {"width": self.config.viewport_width, "height": self.config.viewport_height}
+        }
         if self.config.video != "off":
             context_kwargs["record_video_dir"] = str(self._video_dir())
         self.context = self.browser.new_context(**context_kwargs)
@@ -90,7 +136,7 @@ class Driver:
         self._wire_listeners(self.page)
 
     def stop(self, *, save_trace: bool, trace_path: Path | None = None) -> None:
-        """Stop tracing (saving to *trace_path* iff *save_trace*) and close everything."""
+        """Stop tracing, close the context, and close the browser iff we own it."""
         try:
             if self.config.trace != "off" and self.context is not None:
                 if save_trace and trace_path is not None:
@@ -99,17 +145,14 @@ class Driver:
                     self.context.tracing.stop()
         except Exception:  # tracing is best-effort; never mask the real result
             pass
-        for closer in (self.context, self.browser):
-            try:
-                if closer is not None:
-                    closer.close()
-            except Exception:
-                pass
         try:
-            if self._pw is not None:
-                self._pw.stop()
+            if self.context is not None:
+                self.context.close()
         except Exception:
             pass
+        # Only tear down the browser/playwright if this driver launched its own.
+        if self._owns_session and self._session is not None:
+            self._session.close()
 
     # -- diagnostic buffers ------------------------------------------------
 

@@ -1,0 +1,66 @@
+name: CI
+
+# Verify every push and PR: the package imports, unit tests pass, flows validate,
+# and the hermetic example flows actually run in a real (headless) browser.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install WAT (with extras + dev tools)
+        run: pip install -e ".[dev,sql,liveview]"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install Playwright chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Doctor (environment + wiring check)
+        run: wat --doctor --root .
+
+      - name: Print action catalog
+        run: wat --print-actions
+
+      - name: Validate all flows (no browser)
+        run: wat --validate-only --all --root .
+
+      - name: Run hermetic example flows (headless browser)
+        run: wat --all --headless --root . --report wat-report.xml
+
+      - name: Upload run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wat-report-py${{ matrix.python-version }}
+          path: wat-report.xml
+          if-no-files-found: ignore
