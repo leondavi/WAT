@@ -48,6 +48,15 @@ def test_assert_js_non_dict_truthy_passes():
         assert A.assert_js(ctx)["pass"] is True
 
 
+def test_assert_js_preserves_diagnostic_fields():
+    # issue #2: extra fields on the returned object must survive for the log.
+    ctx = make_ctx({"action": "assert_js", "script": "x"},
+                   page=FakePage(evaluate_result={"pass": False, "why": "no textarea", "label": "c"}))
+    out = A.assert_js(ctx)
+    assert out["pass"] is False
+    assert out["why"] == "no textarea" and out["label"] == "c"
+
+
 # -- element / text ----------------------------------------------------------
 
 def test_assert_element_present_and_absent():

@@ -189,8 +189,11 @@ def assert_no_network_errors(ctx: StepContext) -> dict:
 def assert_js(ctx: StepContext) -> dict:
     result = ctx.page.evaluate(as_callable(str(ctx.field("script", required=True, lenient=True))))
     if isinstance(result, dict):
-        verdict = result.get("pass", True)
-        return {"pass": verdict is not False, "reason": result.get("reason")}
+        # Pass the whole returned object through (guaranteeing a 'pass' key). On
+        # failure the runner surfaces any diagnostic fields the script attached
+        # (why / reply / label / ...), so they show up in the log without a manual
+        # console.warn round-trip.
+        return {**result, "pass": result.get("pass", True)}
     return _verdict(bool(result), f"assert_js returned {result!r}")
 
 

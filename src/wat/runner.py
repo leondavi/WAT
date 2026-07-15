@@ -209,7 +209,12 @@ def _dispatch(ctx: StepContext, action: str, registry: Registry) -> Any:
 
 
 def _interpret(result: Any, error: BaseException | None) -> tuple[bool, str | None]:
-    """Reduce a handler result (+ any raised error) to (passed, reason)."""
+    """Reduce a handler result (+ any raised error) to (passed, reason).
+
+    On a dict failure, any diagnostic fields the handler attached beyond
+    ``pass``/``reason`` (e.g. an ``assert_js`` script returning ``{pass:false,
+    why:'...'}``) are serialized into the reason so they show up in the log.
+    """
     if error is not None:
         return False, getattr(error, "reason", None) or str(error)
     if result is None or result is True:
@@ -217,10 +222,29 @@ def _interpret(result: Any, error: BaseException | None) -> tuple[bool, str | No
     if result is False:
         return False, None
     if isinstance(result, dict):
-        verdict = result.get("pass", True)
         # pass: null == skip == treated as pass.
-        return (verdict is not False), result.get("reason")
+        passed = result.get("pass", True) is not False
+        reason = result.get("reason")
+        if not passed:
+            extras = {k: v for k, v in result.items() if k not in ("pass", "reason")}
+            if extras:
+                blob = _truncate(_to_json(result))
+                reason = f"{reason} | returned {blob}" if reason else f"returned {blob}"
+        return passed, reason
     return True, None
+
+
+def _to_json(obj: Any) -> str:
+    import json
+
+    try:
+        return json.dumps(obj, default=str, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return repr(obj)
+
+
+def _truncate(text: str, limit: int = 400) -> str:
+    return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
 def _handle_failure(ctx: StepContext, index: int, action: str, reason: str | None,

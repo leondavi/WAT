@@ -73,6 +73,11 @@ split). It must return either:
 * a boolean, or
 * `{ "pass": true|false, "reason": "...", ...diagnostics }`.
 
+On failure, any extra fields on the returned object (e.g. `why`, `reply`, `label`)
+are serialized (JSON, truncated) into the failure reason — they appear in the run
+log, `run.json`, and the agent prompt, so you don't need a `console.warn` round-trip
+to see them.
+
 ```json
 {"action": "assert_js",
  "script": "return new Promise(r => setTimeout(() => r({pass: !!window.App, reason: 'App missing'}), 300))"}
