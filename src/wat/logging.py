@@ -149,12 +149,30 @@ class RunLogger:
                 pass
 
     def _prune(self, keep: int) -> None:
-        """Keep only the most recent *keep* run directories."""
+        """Keep the current run plus the ``keep - 1`` most-recent older runs.
+
+        Runs are ordered by directory mtime (creation/modification recency), NOT by
+        name: ``run_id`` leads with the flow stem, so a name sort would order runs
+        alphabetically by flow -- and could classify this run's own just-created dir
+        as "old" and delete it (issue #3, FileNotFoundError under ``--all``). The
+        current run dir is always excluded from the deletion set.
+        """
         runs_dir = self.base / "runs"
         if keep <= 0 or not runs_dir.exists():
             return
-        runs = sorted((p for p in runs_dir.iterdir() if p.is_dir()), key=lambda p: p.name)
-        for old in runs[:-keep]:
+
+        def _mtime(p):
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return 0.0
+
+        others = sorted(
+            (p for p in runs_dir.iterdir() if p.is_dir() and p != self.dir),
+            key=_mtime,
+        )
+        # Keep the current run + the (keep - 1) most-recent others; delete the rest.
+        for old in others[: max(0, len(others) - (keep - 1))]:
             _rmtree(old)
 
 

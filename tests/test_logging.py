@@ -38,3 +38,27 @@ def test_prune_keeps_recent_runs(tmp_path):
         RunLogger(app="test", log_dir=str(tmp_path), flow_stem=s, echo=False, keep_runs=3).close()
     runs = sorted((tmp_path / "runs").iterdir())
     assert len(runs) <= 3
+
+
+def test_prune_never_deletes_own_run_dir(tmp_path):
+    # Regression for issue #3: run_id leads with the flow stem, so a NAME sort orders
+    # runs alphabetically by flow -- not by recency. A run with an early-sorting stem
+    # ("fl_aaa") whose runs/ dir already holds >= keep_runs later-sorting dirs would be
+    # classified as "old" and have its own just-created dir deleted -> FileNotFoundError.
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    # Pre-existing runs whose names sort AFTER the current one but are OLDER on disk.
+    for i in range(3):
+        (runs_dir / f"fl_zzz_{i}-20260101T000000Z-1").mkdir()
+
+    log = RunLogger(app="test", log_dir=str(tmp_path), flow_stem="fl_aaa", echo=False, keep_runs=3)
+    try:
+        # The current run dir must survive pruning...
+        assert log.dir.exists()
+        # ...and its channels must still be writable (the bug surfaced as a write to a
+        # deleted dir raising FileNotFoundError).
+        log.wat("still alive")
+    finally:
+        log.close()
+    assert (log.dir / "wat.log").exists()
+    assert "still alive" in (log.dir / "wat.log").read_text()
