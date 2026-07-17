@@ -7,7 +7,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from wat.runner import FlowResult
-from wat.reports import build_json, build_junit, write_report
+from wat.reports import build_json, build_junit, build_html, write_report
 
 
 def _results():
@@ -42,3 +42,26 @@ def test_write_report_junit_and_json(tmp_path):
     p2 = write_report(_results(), tmp_path / "r.json", "json")
     assert p1.exists() and "<testsuite" in p1.read_text()
     assert p2.exists() and json.loads(p2.read_text())["total"] == 2
+
+
+def test_build_html_is_self_contained_and_summarizes():
+    doc = build_html(_results())
+    assert doc.startswith("<!doctype html>")
+    assert "<style>" in doc and "http://" not in doc and "src='http" not in doc  # no external resources
+    # names, both statuses, and counts are present
+    assert ">A<" in doc and ">B<" in doc
+    assert "PASS" in doc and "FAIL" in doc
+    assert "element not found" in doc  # failure message rendered
+    assert "<div class='n'>2</div>" in doc  # total tile
+
+
+def test_build_html_escapes_message():
+    r = [FlowResult(path=Path("fl_x.json"), name="X", returncode=1, status="fail",
+                    duration_ms=10, source="app", message="<script>bad</script>")]
+    doc = build_html(r)
+    assert "<script>bad</script>" not in doc and "&lt;script&gt;bad" in doc
+
+
+def test_write_report_html(tmp_path):
+    p = write_report(_results(), tmp_path / "r.html", "html")
+    assert p.exists() and p.read_text().startswith("<!doctype html>")

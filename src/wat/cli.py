@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fail-fast", dest="fail_fast", action="store_const", const=True, default=None,
                    help="Stop the run on the first failing flow.")
     p.add_argument("--report", help="Write an aggregate report for --all to this path.")
-    p.add_argument("--report-format", choices=["junit", "json"], default="junit",
+    p.add_argument("--report-format", choices=["junit", "json", "html"], default="junit",
                    help="Format for --report (default: junit).")
 
     # Config overrides (default None so unset flags don't clobber file/env config).

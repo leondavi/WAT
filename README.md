@@ -62,7 +62,8 @@ wat --all --workers 4           # run in parallel (each worker its own browser)
 wat --all --label sheet/        # filter by label prefix
 wat --all --grep dataset        # filter by substring (file name / flow name / label)
 wat --all --fail-fast           # stop on the first failure
-wat --all --report out.xml      # JUnit report for CI (--report-format junit|json)
+wat --all --report out.xml      # JUnit report for CI (--report-format junit|json|html)
+wat --all --report out.html --report-format html   # self-contained HTML report (screenshots inline)
 ```
 
 ## Documentation
