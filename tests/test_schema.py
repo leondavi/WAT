@@ -100,3 +100,55 @@ def test_flow_labels_string_and_list():
     assert flow_labels({"label": "a/b"}) == ["a/b"]
     assert flow_labels({"label": ["a", "b"]}) == ["a", "b"]
     assert flow_labels({}) == []
+
+
+# -- `use` sub-flow composition ---------------------------------------------
+
+def _write(dir_path, name, steps, **top):
+    import json as _json
+
+    p = dir_path / name
+    p.write_text(_json.dumps({"steps": steps, **top}))
+    return p
+
+
+def test_use_inlines_subflow_steps(tmp_path):
+    _write(tmp_path, "fl_frag.json", [{"action": "click", "selector": "#a"}])
+    parent = _write(tmp_path, "fl_parent.json", [
+        {"action": "open", "url": "/"},
+        {"use": "fl_frag.json"},
+        {"action": "assert_element", "selector": "#done"},
+    ])
+    flow = load_flow(parent)
+    assert [s["action"] for s in flow["steps"]] == ["open", "click", "assert_element"]
+
+
+def test_nested_use_expands_recursively(tmp_path):
+    _write(tmp_path, "fl_inner.json", [{"action": "reload"}])
+    _write(tmp_path, "fl_mid.json", [{"action": "back"}, {"use": "fl_inner.json"}])
+    parent = _write(tmp_path, "fl_top.json", [{"use": "fl_mid.json"}, {"action": "forward"}])
+    assert [s["action"] for s in load_flow(parent)["steps"]] == ["back", "reload", "forward"]
+
+
+def test_use_cycle_detected(tmp_path):
+    _write(tmp_path, "fl_a.json", [{"use": "fl_b.json"}])
+    _write(tmp_path, "fl_b.json", [{"use": "fl_a.json"}])
+    with pytest.raises(SchemaError, match="cycle"):
+        load_flow(tmp_path / "fl_a.json")
+
+
+def test_use_missing_file_errors(tmp_path):
+    parent = _write(tmp_path, "fl_parent.json", [{"use": "fl_nope.json"}])
+    with pytest.raises(SchemaError):
+        load_flow(parent)
+
+
+def test_validate_sees_expanded_flow(tmp_path):
+    # A var captured in the parent and referenced inside the fragment must validate
+    # clean once inlined (produced-before-used holds across the merge).
+    _write(tmp_path, "fl_use_var.json", [{"action": "navigate", "url": "/x/{{tok}}"}])
+    parent = _write(tmp_path, "fl_cap.json", [
+        {"action": "capture", "selector": "#t", "var": "tok"},
+        {"use": "fl_use_var.json"},
+    ])
+    assert validate_flow(load_flow(parent)) == []

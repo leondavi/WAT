@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--fail-fast", dest="fail_fast", action="store_const", const=True, default=None,
                    help="Stop the run on the first failing flow.")
     p.add_argument("--report", help="Write an aggregate report for --all to this path.")
-    p.add_argument("--report-format", choices=["junit", "json"], default="junit",
+    p.add_argument("--report-format", choices=["junit", "json", "html"], default="junit",
                    help="Format for --report (default: junit).")
 
     # Config overrides (default None so unset flags don't clobber file/env config).
@@ -64,6 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
                    default=None, help="Headed: hold the browser open on failure to inspect.")
     p.add_argument("--stream-console", dest="stream_console", action="store_const", const=True,
                    default=None, help="Stream browser console/errors live (auto-on when headed).")
+    p.add_argument("--storage-state", dest="storage_state",
+                   help="Path to a saved storage state (cookies + localStorage) to restore into each flow.")
+    p.add_argument("--update-baselines", dest="visual_update", action="store_const", const=True,
+                   default=None, help="Visual: (re)write screenshot baselines instead of comparing.")
     p.add_argument("--trace", choices=["off", "on", "on-failure"], help="Playwright trace capture.")
     p.add_argument("--video", choices=["off", "on", "on-failure"], help="Video capture.")
     p.add_argument("--wait-ms", type=int)
@@ -75,8 +79,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _overrides(args: argparse.Namespace) -> dict:
     keys = ("base_url", "browser", "channel", "headless", "slow_mo_ms", "devtools",
-            "pause_on_failure", "stream_console", "trace", "video",
-            "workers", "fail_fast", "wait_ms", "flows_dir", "app_name", "log_dir")
+            "pause_on_failure", "stream_console", "trace", "video", "storage_state",
+            "visual_update", "workers", "fail_fast", "wait_ms", "flows_dir", "app_name", "log_dir")
     overrides = {k: getattr(args, k) for k in keys if getattr(args, k) is not None}
     # --live is a convenience: visible browser + gentle slow-mo (unless overridden).
     if getattr(args, "live", False):
@@ -140,10 +144,13 @@ def _run_all(cfg: WatConfig, args: argparse.Namespace) -> int:
     results = run_flows(flows, cfg)
     passed = [r for r in results if r.returncode == 0]
     failed = [r for r in results if r.returncode != 0]
+    # A flow may expand into several results (a matrix case per row), so "skipped" counts
+    # flow FILES that produced no result at all (e.g. cut off by --fail-fast), never cases.
+    ran = {r.path for r in results}
+    skipped = sum(1 for f in flows if f not in ran)
 
     print("\n" + "=" * 60)
-    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, "
-          f"{len(flows) - len(results)} skipped")
+    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, {skipped} skipped")
     for r in passed:
         print(f"  [PASS] {r.path.name}  ({r.duration_ms}ms)")
     for r in failed:
@@ -231,6 +238,11 @@ def _doctor(cfg: WatConfig) -> int:
     print(f"  base_url    : {cfg.base_url}")
     print(f"  flows_dir   : {cfg.flows_path()}")
     print(f"  log_dir     : {cfg.log_dir or '(temp default)'}")
+    if cfg.storage_state:
+        from .driver import _resolve_storage_state
+
+        ss_path, ss_exists = _resolve_storage_state(cfg)
+        print(f"  storage     : {ss_path}  ({'found' if ss_exists else 'MISSING - run the setup flow'})")
 
     core_actions = len(REGISTRY.names())
     ext_results = plugins.load_reporting(list(cfg.extensions), cfg.root)

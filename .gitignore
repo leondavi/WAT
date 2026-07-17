@@ -13,10 +13,13 @@ dist/
 .ruff_cache/
 
 # Playwright / run artifacts (transient; keep committed artifacts under an app's own artifacts/)
+/artifacts/
 trace.zip
 *.failed.png
 *.failed.html
 *.agent_prompt.txt
+# Saved storage-state files hold live session cookies — never commit them.
+*.storage-state.json
 
 # OS
 .DS_Store

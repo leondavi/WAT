@@ -52,6 +52,11 @@ class WatConfig:
     wait_ms: int = 10_000
     trace: str = "on-failure"             # off | on | on-failure
     video: str = "off"                    # off | on | on-failure
+    # Path to a saved Playwright storage state (cookies + localStorage). When set and the
+    # file exists, it is restored into every flow's context so authenticated flows skip
+    # the login form. Write it once with the `save_storage_state` action. A flow may
+    # override with a top-level `storage_state` key (empty = force a fresh context).
+    storage_state: str | None = None
 
     # Live-run ergonomics.
     stream_console: bool | None = None     # stream [BROWSER] console/pageerror live; None = auto (on when headed)
@@ -68,6 +73,11 @@ class WatConfig:
     # Fail a flow if the page raised an uncaught JS exception (pageerror) during the run.
     # Off by default so it never surprises existing flows; assert_no_console_errors is explicit.
     fail_on_pageerror: bool = False
+
+    # Visual regression (wat.ext.visual; opt in via extensions=["visual"], [visual] extra).
+    visual_baseline_dir: str | None = None   # where baseline PNGs live (default: <root>/baselines)
+    visual_update: bool = False               # (re)write baselines instead of comparing
+    visual_max_diff_ratio: float = 0.0        # max fraction of differing pixels allowed (0 = exact)
 
     # Extensibility.
     plugins: list[str] = field(default_factory=list)       # import strings
@@ -120,6 +130,8 @@ def _coerce(name: str, raw: str) -> Any:
         return bool(raw)
     if typ in ("int", int):
         return int(raw)
+    if typ in ("float", float):
+        return float(raw)
     return raw
 
 

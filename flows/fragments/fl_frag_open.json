@@ -1,0 +1,9 @@
+{
+  "name": "Fragment: open a hermetic page",
+  "label": "example/fragment",
+  "description": "A reusable preamble included via {\"use\": ...}. Lives in a subdir so --all never runs it standalone.",
+  "steps": [
+    {"action": "open", "url": "data:text/html,<title>WAT</title><h1 id='t'>Hello WAT</h1>"},
+    {"action": "assert_title", "value": "WAT"}
+  ]
+}

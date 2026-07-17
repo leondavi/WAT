@@ -24,7 +24,8 @@ from pathlib import Path
 from .registry import REGISTRY
 
 # Short names for bundled extensions.
-_BUNDLED = {"liveview": "wat.ext.liveview", "sql": "wat.ext.sql", "auth": "wat.ext.auth"}
+_BUNDLED = {"liveview": "wat.ext.liveview", "sql": "wat.ext.sql", "auth": "wat.ext.auth",
+            "visual": "wat.ext.visual"}
 
 
 def load(names: list[str], root: str | Path = ".") -> None:

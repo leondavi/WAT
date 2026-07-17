@@ -10,7 +10,7 @@ from __future__ import annotations
 import types
 
 from wat.config import WatConfig
-from wat.driver import Driver, build_launch_kwargs
+from wat.driver import Driver, build_launch_kwargs, build_context_kwargs, _resolve_storage_state
 from wat.cli import build_parser, _overrides
 
 
@@ -59,6 +59,37 @@ def test_viewport_defaults_and_override():
     assert (WatConfig().viewport_width, WatConfig().viewport_height) == (1440, 1024)
     cfg = WatConfig(viewport_width=800, viewport_height=600)
     assert cfg.viewport_width == 800 and cfg.viewport_height == 600
+
+
+# ---------------------------------------------------------------------------
+# build_context_kwargs / storage_state — pure context configuration
+# ---------------------------------------------------------------------------
+
+def test_context_kwargs_viewport_always_present():
+    kw = build_context_kwargs(WatConfig())
+    assert kw["viewport"] == {"width": 1440, "height": 1024}
+    assert "storage_state" not in kw  # unset by default
+
+
+def test_storage_state_included_when_file_exists(tmp_path):
+    state = tmp_path / "auth.json"
+    state.write_text("{}")
+    kw = build_context_kwargs(WatConfig(storage_state=str(state)))
+    assert kw["storage_state"] == str(state)
+
+
+def test_storage_state_omitted_when_missing(tmp_path):
+    # Configured but not yet created (setup flow hasn't run) -> omitted, not an error.
+    kw = build_context_kwargs(WatConfig(storage_state=str(tmp_path / "nope.json")))
+    assert "storage_state" not in kw
+
+
+def test_resolve_storage_state_relative_and_absolute(tmp_path):
+    (tmp_path / "auth.json").write_text("{}")
+    path, exists = _resolve_storage_state(WatConfig(storage_state="auth.json", root=str(tmp_path)))
+    assert path == tmp_path / "auth.json" and exists is True
+    none_path, none_exists = _resolve_storage_state(WatConfig())
+    assert none_path is None and none_exists is False
 
 
 # ---------------------------------------------------------------------------

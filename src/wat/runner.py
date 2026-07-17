@@ -21,7 +21,7 @@ from .errors import AssertionFailure, StepFailure, SOURCE_APP, SOURCE_BROWSER
 from .logging import ConsoleLog, RunLogger
 from .registry import REGISTRY, Registry
 from .reporting import write_failure_artifacts, write_success_summary
-from .schema import load_flow
+from .schema import flow_matrix, load_flow
 
 
 @dataclass
@@ -40,29 +40,44 @@ class FlowResult:
 
 
 def run_flow(flow_path: str | Path, config: WatConfig, registry: Registry = REGISTRY) -> int:
-    """Run one flow file. Returns 0 on success, 1 on failure (back-compat wrapper)."""
-    return execute_flow(flow_path, config, registry).returncode
+    """Run one flow file (expanding a ``matrix`` into a case per row). Returns 0 only if
+    every case passed, else 1 (back-compat wrapper)."""
+    results = run_flows([Path(flow_path)], config, registry)
+    return 0 if all(r.returncode == 0 for r in results) else 1
 
 
 def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = REGISTRY,
-                 session: BrowserSession | None = None) -> FlowResult:
-    """Run one flow and return a rich :class:`FlowResult`.
+                 session: BrowserSession | None = None, *, flow: dict[str, Any] | None = None,
+                 initial_store: dict[str, Any] | None = None, stem_suffix: str = "",
+                 case_label: str | None = None) -> FlowResult:
+    """Run one flow (or one matrix case of it) and return a rich :class:`FlowResult`.
 
     If *session* is given, the flow runs in a fresh context on that shared browser
     (fast for ``--all``); otherwise a private browser is launched just for this flow.
+
+    For a data-driven matrix case the caller passes the already-loaded *flow*, the row's
+    *initial_store* (seeds ``{{var}}`` interpolation), a *stem_suffix* that keeps each
+    case's log/artifact dir distinct, and a *case_label* appended to the result name.
     """
     flow_path = Path(flow_path)
-    flow = load_flow(flow_path)
+    if flow is None:
+        flow = load_flow(flow_path)
     flow["__path__"] = str(flow_path)
     stem = flow_path.stem
+    log_stem = stem + stem_suffix
     name = flow.get("name", stem)
+    if case_label:
+        name = f"{name} [{case_label}]"
     started = time.monotonic()
 
     soft_failures: list[str] = []
-    with RunLogger(app=config.app_name, log_dir=config.log_dir, flow_stem=stem,
+    with RunLogger(app=config.app_name, log_dir=config.log_dir, flow_stem=log_stem,
                    level=config.log_level, keep_runs=config.keep_runs) as log:
         log.wat(f"flow '{name}' - {len(flow['steps'])} steps @ {config.base_url}")
-        driver = Driver(config, log, session=session)
+        # A flow may pin its own storage_state (or clear it) without disturbing the rest
+        # of the config; storage_state is a context kwarg, so this works on a shared
+        # --all browser too (each flow still gets its own fresh context).
+        driver = Driver(_flow_config(config, flow), log, session=session)
         failed_index: int | None = None
         failed_action: str | None = None
         summary: dict[str, Any] = {}
@@ -70,7 +85,8 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
         try:
             driver.start()
             ctx = StepContext(page=driver.page, browser_context=driver.context, driver=driver,
-                              config=config, flow=flow, flow_stem=stem, log=log)
+                              config=config, flow=flow, flow_stem=log_stem, log=log,
+                              store=dict(initial_store or {}))
 
             for hook in registry.hooks("before_flow"):
                 hook(ctx)
@@ -99,7 +115,7 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
         except BaseException as exc:  # noqa: BLE001 — we classify and report every failure
             rc = 1
             driver.drain_diagnostics()
-            summary = write_failure_artifacts(ctx=_ctx_for_report(driver, config, flow, stem, log),
+            summary = write_failure_artifacts(ctx=_ctx_for_report(driver, config, flow, log_stem, log),
                                               driver=driver, log=log, exc=exc,
                                               failed_index=failed_index, failed_action=failed_action)
             log.wat(f"FAILED at step {failed_index} ({failed_action}): {exc}", level="error")
@@ -131,10 +147,15 @@ def _run_sequential(flow_paths: list[Path], config: WatConfig, registry: Registr
     results: list[FlowResult] = []
     session = BrowserSession(config, ConsoleLog()).start()
     try:
+        stop = False
         for path in flow_paths:
-            result = execute_flow(path, config, registry, session=session)
-            results.append(result)
-            if config.fail_fast and result.returncode != 0:
+            for case in _load_cases(path):
+                result = execute_flow(path, config, registry, session=session, **case)
+                results.append(result)
+                if config.fail_fast and result.returncode != 0:
+                    stop = True
+                    break
+            if stop:
                 break
     finally:
         session.close()
@@ -144,12 +165,29 @@ def _run_sequential(flow_paths: list[Path], config: WatConfig, registry: Registr
 def _run_parallel(flow_paths: list[Path], config: WatConfig, registry: Registry) -> list[FlowResult]:
     # Each task launches its own browser (sessions are thread-bound). fail_fast in
     # parallel means "stop submitting more once one fails".
+    tasks = [(path, case) for path in flow_paths for case in _load_cases(path)]
     results: list[FlowResult] = []
     with ThreadPoolExecutor(max_workers=config.workers) as pool:
-        futures = {pool.submit(execute_flow, path, config, registry): path for path in flow_paths}
+        futures = [pool.submit(execute_flow, path, config, registry, **case) for path, case in tasks]
         for future in futures:  # preserves submission order
             results.append(future.result())
     return results
+
+
+def _load_cases(flow_path: Path) -> list[dict[str, Any]]:
+    """Load *flow_path* and expand its ``matrix`` into per-row execute_flow kwargs.
+
+    A non-matrix flow yields exactly one case; a matrix of N rows yields N, each with a
+    distinct ``stem_suffix`` (separate log/artifact dirs) and the row as ``initial_store``.
+    The loaded flow dict is shared across a flow's cases (steps are read-only at run time).
+    """
+    flow = load_flow(flow_path)
+    rows = flow_matrix(flow)
+    if not rows:
+        return [{"flow": flow, "initial_store": {}, "stem_suffix": "", "case_label": None}]
+    return [{"flow": flow, "initial_store": row, "stem_suffix": f".case{i}",
+             "case_label": ", ".join(f"{k}={v}" for k, v in row.items())}
+            for i, row in enumerate(rows)]
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +340,13 @@ def _final_checks(driver: Driver, config: WatConfig, soft_failures: list[str]) -
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _flow_config(config: WatConfig, flow: dict) -> WatConfig:
+    """Apply a flow-level ``storage_state`` override (if any) to the config."""
+    if "storage_state" not in flow:
+        return config
+    return replace(config, storage_state=flow.get("storage_state") or None)
+
 
 def _ctx_for_report(driver: Driver, config: WatConfig, flow: dict, stem: str, log: RunLogger) -> StepContext:
     return StepContext(page=driver.page, browser_context=driver.context, driver=driver,

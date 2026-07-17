@@ -27,19 +27,45 @@ _VAR_REF = re.compile(r"\{\{(\w+)\}\}")
 # Loading + canonicalization
 # ---------------------------------------------------------------------------
 
-def load_flow(path: str | Path) -> dict[str, Any]:
-    """Read and canonicalize a flow file. Raises :class:`SchemaError` if malformed."""
+def load_flow(path: str | Path, _seen: frozenset[Path] = frozenset()) -> dict[str, Any]:
+    """Read and canonicalize a flow file. Raises :class:`SchemaError` if malformed.
+
+    A step of the form ``{"use": "<path-to-fl_*.json>"}`` (no ``action``) inlines the
+    referenced flow's steps in place, so composition happens at load time and both
+    validation and running see one flat, expanded flow. Nesting is allowed; ``_seen``
+    tracks the include chain to reject cycles. Referenced paths resolve relative to the
+    including file's directory.
+    """
     path = Path(path)
     if not path.name.startswith("fl_") or path.suffix.lower() != ".json":
         raise SchemaError(f"flow file must match fl_<name>.json: {path.name}")
+    resolved = path.resolve()
+    if resolved in _seen:
+        raise SchemaError(f"include cycle: {path.name} is used recursively")
+    _seen = _seen | {resolved}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SchemaError(f"cannot read flow {path}: {exc}") from exc
     if not isinstance(data, dict) or not isinstance(data.get("steps"), list) or not data["steps"]:
         raise SchemaError(f"flow {path.name} must be an object with a non-empty 'steps' array")
-    data["steps"] = [canonicalize_step(s, i) for i, s in enumerate(data["steps"])]
+
+    steps: list[dict[str, Any]] = []
+    for i, raw in enumerate(data["steps"]):
+        if isinstance(raw, dict) and "use" in raw and "action" not in raw:
+            steps.extend(load_flow(_resolve_use(path, raw["use"]), _seen)["steps"])
+        else:
+            steps.append(canonicalize_step(raw, i))
+    data["steps"] = steps
     return data
+
+
+def _resolve_use(including: Path, ref: Any) -> Path:
+    """Resolve a ``use`` reference against the including flow's directory."""
+    if not isinstance(ref, str) or not ref.strip():
+        raise SchemaError(f"'use' must be a path to an fl_<name>.json flow, got {ref!r}")
+    target = Path(ref)
+    return target if target.is_absolute() else (including.parent / target)
 
 
 # Field aliases accepted for backward compatibility with the legacy Selenium forks.
@@ -95,6 +121,20 @@ def flow_labels(flow: dict[str, Any]) -> list[str]:
     return []
 
 
+def flow_matrix(flow: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the flow's ``matrix`` rows (data-driven params), or ``[]`` if absent.
+
+    Each row is a ``{name: value}`` mapping that seeds the capture store before the
+    steps run, so the same flow executes once per row with ``{{name}}`` bound to that
+    row's value. A malformed ``matrix`` returns ``[]`` here; :func:`validate_flow`
+    reports it as an error.
+    """
+    raw = flow.get("matrix")
+    if not isinstance(raw, list) or not all(isinstance(r, dict) for r in raw):
+        return []
+    return [dict(r) for r in raw]
+
+
 # ---------------------------------------------------------------------------
 # Validation (no browser)
 # ---------------------------------------------------------------------------
@@ -107,6 +147,16 @@ def validate_flow(flow: dict[str, Any], registry: Registry = REGISTRY) -> list[s
         return errors
 
     produced: set[str] = set()  # variables available via capture/store_as
+    # matrix rows seed the capture store before any step, so their keys are available
+    # to every step's {{var}} references.
+    if "matrix" in flow:
+        raw = flow.get("matrix")
+        if not isinstance(raw, list) or not raw or not all(isinstance(r, dict) for r in raw):
+            errors.append("'matrix' must be a non-empty list of objects")
+        else:
+            for row in raw:
+                produced.update(row.keys())
+
     for i, step in enumerate(flow["steps"]):
         action = step.get("action")
         prefix = f"step #{i} ({action})"

@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import wat  # noqa: F401 — ensures core actions are registered
 from wat.actions import assertions as A
+from wat.config import WatConfig
 from conftest import FakePage, FakeDriver, FakeLocator, make_ctx
+
+# Failing (predicate-never-true) cases poll until timeout; keep them fast.
+_FAST = WatConfig(wait_ms=50)
 
 
 # -- assert_js: the {pass, reason} contract ---------------------------------
@@ -100,3 +104,54 @@ def test_assert_no_network_errors():
     ctx = make_ctx({"action": "assert_no_network_errors"},
                    driver=FakeDriver(network_failures=[{"url": "u", "status": 500}]))
     assert not A.assert_no_network_errors(ctx)["pass"]
+
+
+# -- element-state assertions now auto-retry (poll to wait_ms) ---------------
+
+def test_assert_checked_polls_true_and_false():
+    page = FakePage(locators={"#on": FakeLocator(checked=True), "#off": FakeLocator(checked=False)})
+    assert A.assert_checked(make_ctx({"action": "assert_checked", "selector": "#on"}, page=page))["pass"]
+    bad = A.assert_checked(make_ctx({"action": "assert_checked", "selector": "#off"},
+                                    page=page, config=_FAST))
+    assert not bad["pass"] and bad["reason"] == "element is not checked"
+
+
+def test_assert_enabled_and_disabled():
+    page = FakePage(locators={"#on": FakeLocator(enabled=True), "#off": FakeLocator(enabled=False)})
+    assert A.assert_enabled(make_ctx({"action": "assert_enabled", "selector": "#on"}, page=page))["pass"]
+    assert A.assert_disabled(make_ctx({"action": "assert_disabled", "selector": "#off"}, page=page))["pass"]
+    assert not A.assert_enabled(make_ctx({"action": "assert_enabled", "selector": "#off"},
+                                         page=page, config=_FAST))["pass"]
+    assert not A.assert_disabled(make_ctx({"action": "assert_disabled", "selector": "#on"},
+                                          page=page, config=_FAST))["pass"]
+
+
+def test_assert_value_matches_and_reason():
+    page = FakePage(locators={"#i": FakeLocator(value="hello")})
+    assert A.assert_value(make_ctx({"action": "assert_value", "selector": "#i", "value": "hello"}, page=page))["pass"]
+    bad = A.assert_value(make_ctx({"action": "assert_value", "selector": "#i", "value": "bye"},
+                                  page=page, config=_FAST))
+    assert not bad["pass"] and "'hello'" in bad["reason"]  # observed value surfaced in the reason
+
+
+def test_assert_attribute_equals_and_contains():
+    page = FakePage(locators={"#a": FakeLocator(attrs={"data-state": "open-now"})})
+    eq = A.assert_attribute(make_ctx(
+        {"action": "assert_attribute", "selector": "#a", "attr": "data-state", "value": "open-now"}, page=page))
+    contains = A.assert_attribute(make_ctx(
+        {"action": "assert_attribute", "selector": "#a", "attr": "data-state", "value": "open", "contains": True},
+        page=page))
+    bad = A.assert_attribute(make_ctx(
+        {"action": "assert_attribute", "selector": "#a", "attr": "data-state", "value": "closed"},
+        page=page, config=_FAST))
+    assert eq["pass"] and contains["pass"] and not bad["pass"]
+    assert "'open-now'" in bad["reason"]
+
+
+def test_assert_hidden_absent_and_visible():
+    page = FakePage(locators={"#gone": FakeLocator(count=0),
+                              "#shown": FakeLocator(count=1, visible=True)})
+    assert A.assert_hidden(make_ctx({"action": "assert_hidden", "selector": "#gone"}, page=page))["pass"]
+    bad = A.assert_hidden(make_ctx({"action": "assert_hidden", "selector": "#shown"},
+                                   page=page, config=_FAST))
+    assert not bad["pass"] and bad["reason"] == "element is visible"

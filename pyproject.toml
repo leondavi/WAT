@@ -20,6 +20,8 @@ dependencies = [
 sql = ["psycopg2-binary>=2.9"]
 # `liveview` is pure-python (no extra deps); the extra exists as an explicit opt-in marker.
 liveview = []
+# `visual` pulls Pillow for the wat.ext.visual assert_screenshot regression action.
+visual = ["pillow>=10"]
 # Development / test tooling.
 dev = ["pytest>=8"]
 
@@ -42,6 +44,9 @@ base_url = "http://localhost:4000"
 browser = "chromium"
 headless = true
 wait_ms = 10000
+# Load the bundled visual-regression extension so the example flow's assert_screenshot
+# resolves when running WAT's own flows (needs the [visual] extra).
+extensions = ["visual"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

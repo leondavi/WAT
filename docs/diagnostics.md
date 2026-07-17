@@ -51,6 +51,15 @@ diagnostics automatically so the terminal narrates what the browser is doing:
 - `--pause-on-failure` holds the visible browser open in the Playwright Inspector so
   you can poke at the live DOM at the point of failure.
 
+## Aggregate reports (`--all --report`)
+
+A `--all` run can emit one aggregate artifact with `--report <path> --report-format <fmt>`:
+
+- `junit` (default) — JUnit XML for CI (GitHub Actions, GitLab, Jenkins).
+- `json` — machine-readable summary (counts + per-flow result, source, log dir).
+- `html` — a single self-contained page (inline CSS, failure screenshots embedded as
+  data URIs) you can open with no server; theme-aware and shareable as a CI artifact.
+
 ## Quick commands
 
 ```bash

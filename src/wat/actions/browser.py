@@ -7,7 +7,10 @@ depend on (a seeded cookie, a cleared localStorage, a mobile viewport, an accept
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from ..context import StepContext
+from ..errors import StepFailure, SOURCE_FLOW_AUTHORING
 from ..registry import register_action
 
 
@@ -26,6 +29,27 @@ def set_cookie(ctx: StepContext) -> None:
 @register_action("clear_cookies", group="browser", description="Clear all cookies.")
 def clear_cookies(ctx: StepContext) -> None:
     ctx.browser_context.clear_cookies()
+
+
+# -- session reuse -----------------------------------------------------------
+
+@register_action("save_storage_state", aliases=("save_auth",), group="browser",
+                 description="Persist cookies + localStorage to a file for reuse via config.storage_state.")
+def save_storage_state(ctx: StepContext) -> None:
+    """Save the context's cookies + localStorage so later runs can skip logging in.
+
+    Typically the last step of a dedicated setup flow; point other flows at the same
+    file via config ``storage_state`` (or a per-flow ``storage_state`` key)."""
+    raw = ctx.field("path") or ctx.config.storage_state
+    if not raw:
+        raise StepFailure("save_storage_state needs 'path' or config.storage_state",
+                          source=SOURCE_FLOW_AUTHORING)
+    path = Path(str(raw))
+    if not path.is_absolute():
+        path = Path(ctx.config.root) / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ctx.browser_context.storage_state(path=str(path))
+    ctx.log.wat(f"saved storage state -> {path}")
 
 
 # -- web storage -------------------------------------------------------------
