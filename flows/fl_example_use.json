@@ -1,0 +1,10 @@
+{
+  "name": "Example: compose a flow from a reusable fragment",
+  "label": "example/use",
+  "description": "Shows the `use` step inlining fragments/fl_frag_open.json, then asserting on the shared page.",
+  "steps": [
+    {"use": "fragments/fl_frag_open.json", "comment": "inlines the fragment's steps here"},
+    {"action": "assert_element_text", "selector": "#t", "value": "Hello WAT"},
+    {"action": "assert_no_console_errors"}
+  ]
+}

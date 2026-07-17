@@ -38,6 +38,32 @@ and see [`CONTRACT.md`](../CONTRACT.md) for the full schema.
 - **Validate before running:** `wat --validate-only --all` catches unknown actions,
   missing fields, and unresolved variables without launching a browser.
 
+## Reusable fragments (`use`)
+
+Share a login/setup preamble across flows instead of copy-pasting it. Put the fragment
+in a subdirectory (so `--all` never runs it standalone) and pull it in with a `use` step:
+
+```json
+// flows/fragments/fl_login.json
+{"name": "Login fragment", "steps": [
+  {"action": "open", "url": "/users/log_in"},
+  {"action": "type", "by": "testid", "selector": "email", "value": "a@b.com"},
+  {"action": "type", "by": "testid", "selector": "password", "value": "secret"},
+  {"action": "click", "by": "role", "selector": "button", "name": "Log in"}
+]}
+```
+
+```json
+// flows/fl_dashboard.json
+{"name": "Dashboard", "steps": [
+  {"use": "fragments/fl_login.json"},
+  {"action": "assert_url_contains", "value": "/dashboard"}
+]}
+```
+
+The fragment's steps are inlined at load time; captured `{{var}}`s are shared with the
+parent. See `CONTRACT.md` for the full rules (path resolution, cycles, nesting).
+
 ## Custom actions (app plugins)
 
 If your app needs an action WAT doesn't ship, register it in a plugin module and add

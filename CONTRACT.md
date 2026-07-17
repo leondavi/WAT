@@ -52,6 +52,27 @@ an alias and normalized to `value` at load time.
 | `if` / `skip_if` | A JS expression; run (or skip) the step based on its truthiness. |
 | `store_as` | Store the step's result/value under this name for `{{...}}` interpolation. |
 
+### `use` — reusable sub-flows
+
+A step of the form `{"use": "<path>"}` (with **no** `action`) inlines another flow's
+steps in place, so complex flows can share a login/setup preamble instead of copying it:
+
+```json
+{"use": "fragments/fl_login.json"}
+```
+
+* The path resolves relative to the **including** flow's directory; the target must be an
+  `fl_<name>.json` flow.
+* Nesting is allowed; an include cycle is a validation error.
+* Expansion happens at load time, so `--validate-only` and a run both see one flat flow.
+  Shared state flows through the normal `{{var}}` capture store (capture in the parent,
+  reference in the fragment).
+* Keep shared fragments in a **subdirectory** of the flows dir (e.g. `flows/fragments/`):
+  flow discovery is non-recursive, so fragments are includable by path but never run on
+  their own under `--all` / `--list`.
+* `use` alongside an `action` in the same object is treated as a normal action step (the
+  `use` key is ignored).
+
 ## 3. `{{variable}}` interpolation
 
 `capture` (and `store_as`) write into a per-flow store; later steps reference values
