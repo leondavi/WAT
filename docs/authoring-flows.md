@@ -27,6 +27,12 @@ and see [`CONTRACT.md`](../CONTRACT.md) for the full schema.
   `wait_for_text`, or an `assert_js` Promise when you must synchronize.
 - **Capture then interpolate:** `{"action":"capture","selector":"#tok","attr":"value","var":"tok"}`
   then reference `{{tok}}` in later steps.
+- **Assertions auto-wait.** Element-state assertions (`assert_visible`, `assert_checked`,
+  `assert_enabled`/`disabled`, `assert_value`, `assert_attribute`, `assert_hidden`, the
+  text/url/count assertions) poll up to `wait_ms` for the condition to hold, so you rarely
+  need an explicit `wait_for` first. Tune with a per-step `timeout` (`timeout: 0` = check
+  once). Cumulative checks (`assert_no_console_errors`/`_network_errors`) and negatives
+  (`assert_no_element`, `assert_*_not_contains`) are point-in-time by design.
 - **Make flaky steps robust declaratively:** add `timeout`, `retry`, `optional`,
   `soft`, or `if`/`skip_if` instead of restructuring the flow.
 - **Validate before running:** `wat --validate-only --all` catches unknown actions,

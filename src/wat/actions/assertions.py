@@ -46,24 +46,33 @@ def assert_visible(ctx: StepContext) -> dict:
 @register_action("assert_hidden", required=("selector",), group="assert",
                  description="Element is absent or hidden.")
 def assert_hidden(ctx: StepContext) -> dict:
+    # Polls: waiting for an element to disappear/hide is a positive end-state.
+    # A zero-count locator reports is_visible()==False, so the short-circuit is safe.
     loc = ctx.locator()
-    return _verdict(loc.count() == 0 or not loc.is_visible(), "element is visible")
+    ok = poll_until(lambda: loc.count() == 0 or not loc.is_visible(), ctx.timeout_ms())
+    return _verdict(ok, "element is visible")
 
 
 @register_action("assert_enabled", required=("selector",), group="assert", description="Element is enabled.")
 def assert_enabled(ctx: StepContext) -> dict:
-    return _verdict(ctx.locator().is_enabled(), "element is disabled")
+    loc = ctx.locator()
+    ok = poll_until(lambda: loc.is_enabled(), ctx.timeout_ms())
+    return _verdict(ok, "element is disabled")
 
 
 @register_action("assert_disabled", required=("selector",), group="assert", description="Element is disabled.")
 def assert_disabled(ctx: StepContext) -> dict:
-    return _verdict(not ctx.locator().is_enabled(), "element is enabled")
+    loc = ctx.locator()
+    ok = poll_until(lambda: not loc.is_enabled(), ctx.timeout_ms())
+    return _verdict(ok, "element is enabled")
 
 
 @register_action("assert_checked", required=("selector",), group="assert",
                  description="Checkbox/radio is checked.")
 def assert_checked(ctx: StepContext) -> dict:
-    return _verdict(ctx.locator().is_checked(), "element is not checked")
+    loc = ctx.locator()
+    ok = poll_until(lambda: loc.is_checked(), ctx.timeout_ms())
+    return _verdict(ok, "element is not checked")
 
 
 # -- text / attributes / values ---------------------------------------------
@@ -91,8 +100,15 @@ def assert_element_count(ctx: StepContext) -> dict:
 def assert_attribute(ctx: StepContext) -> dict:
     attr = ctx.field("attr", required=True)
     want = str(ctx.field("value", ""))
-    got = ctx.locator().get_attribute(attr) or ""
-    ok = (want in got) if ctx.step.get("contains") else (got == want)
+    contains = ctx.step.get("contains")
+    loc = ctx.locator()
+
+    def _matches() -> bool:
+        got = loc.get_attribute(attr) or ""
+        return (want in got) if contains else (got == want)
+
+    ok = poll_until(_matches, ctx.timeout_ms())
+    got = loc.get_attribute(attr) or ""
     return _verdict(ok, f"attribute {attr}={got!r} did not match {want!r}")
 
 
@@ -100,8 +116,9 @@ def assert_attribute(ctx: StepContext) -> dict:
                  description="Input value equals value.")
 def assert_value(ctx: StepContext) -> dict:
     want = str(ctx.field("value", required=True))
-    got = ctx.locator().input_value()
-    return _verdict(got == want, f"value {got!r} != {want!r}")
+    loc = ctx.locator()
+    ok = poll_until(lambda: loc.input_value() == want, ctx.timeout_ms())
+    return _verdict(ok, f"value {loc.input_value()!r} != {want!r}")
 
 
 # -- url / title / page text -------------------------------------------------
