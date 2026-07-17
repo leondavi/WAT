@@ -22,7 +22,26 @@ A flow is one JSON file named `fl_<name>.json` (the `fl_` prefix is enforced).
 | `label` | string \| [string] | no | Hierarchical tag, e.g. `"sheet/smoke"`. Filter with `--label <prefix>`. |
 | `base_url` | string | no | Overrides config `base_url` for this flow. |
 | `storage_state` | string | no | Restore this saved storage-state file into the flow's context (empty = force a fresh context). Overrides config `storage_state`. |
+| `matrix` | [object] | no | Data-driven rows. The flow runs once per row with each row's keys seeded into the `{{var}}` store. |
 | `steps` | [step] | **yes** | Ordered, non-empty list of step objects. |
+
+### `matrix` — data-driven flows
+
+A `matrix` is a list of parameter rows; the flow runs once per row with that row's
+keys bound as `{{var}}` values (seeded into the capture store before any step). Each row
+is a separate case with its own run dir, artifacts, and result (named `<flow> [k=v]`).
+
+```json
+{"name": "Login roles",
+ "matrix": [{"role": "admin", "landing": "/admin"}, {"role": "editor", "landing": "/editor"}],
+ "steps": [
+   {"action": "login", "role": "{{role}}"},
+   {"action": "assert_url_contains", "value": "{{landing}}"}
+ ]}
+```
+
+`--validate-only` treats matrix keys as available variables. Under `--all --workers N`,
+matrix cases parallelize across workers like any other flow.
 
 Any other top-level key is ignored.
 

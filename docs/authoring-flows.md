@@ -64,6 +64,24 @@ in a subdirectory (so `--all` never runs it standalone) and pull it in with a `u
 The fragment's steps are inlined at load time; captured `{{var}}`s are shared with the
 parent. See `CONTRACT.md` for the full rules (path resolution, cycles, nesting).
 
+## Data-driven flows (`matrix`)
+
+Run one journey across many inputs (roles, locales, a table of input->expected) without
+copying the flow. Add a `matrix` of rows; each key becomes a `{{var}}` for that run:
+
+```json
+{"name": "Headings", "label": "smoke/headings",
+ "matrix": [{"path": "/about", "title": "About"}, {"path": "/pricing", "title": "Pricing"}],
+ "steps": [
+   {"action": "open", "url": "{{path}}"},
+   {"action": "assert_title", "value": "{{title}}"}
+ ]}
+```
+
+Each row runs as its own case (`Headings [path=/about, title=About]`) with a separate run
+dir and result, so failures stay attributable per-row. Cases parallelize under
+`--all --workers N`.
+
 ## Reuse a login across flows (`storage_state`)
 
 Logging in once per flow is slow. Save the authenticated session once, then restore it

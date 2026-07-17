@@ -142,10 +142,13 @@ def _run_all(cfg: WatConfig, args: argparse.Namespace) -> int:
     results = run_flows(flows, cfg)
     passed = [r for r in results if r.returncode == 0]
     failed = [r for r in results if r.returncode != 0]
+    # A flow may expand into several results (a matrix case per row), so "skipped" counts
+    # flow FILES that produced no result at all (e.g. cut off by --fail-fast), never cases.
+    ran = {r.path for r in results}
+    skipped = sum(1 for f in flows if f not in ran)
 
     print("\n" + "=" * 60)
-    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, "
-          f"{len(flows) - len(results)} skipped")
+    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, {skipped} skipped")
     for r in passed:
         print(f"  [PASS] {r.path.name}  ({r.duration_ms}ms)")
     for r in failed:

@@ -121,6 +121,20 @@ def flow_labels(flow: dict[str, Any]) -> list[str]:
     return []
 
 
+def flow_matrix(flow: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the flow's ``matrix`` rows (data-driven params), or ``[]`` if absent.
+
+    Each row is a ``{name: value}`` mapping that seeds the capture store before the
+    steps run, so the same flow executes once per row with ``{{name}}`` bound to that
+    row's value. A malformed ``matrix`` returns ``[]`` here; :func:`validate_flow`
+    reports it as an error.
+    """
+    raw = flow.get("matrix")
+    if not isinstance(raw, list) or not all(isinstance(r, dict) for r in raw):
+        return []
+    return [dict(r) for r in raw]
+
+
 # ---------------------------------------------------------------------------
 # Validation (no browser)
 # ---------------------------------------------------------------------------
@@ -133,6 +147,16 @@ def validate_flow(flow: dict[str, Any], registry: Registry = REGISTRY) -> list[s
         return errors
 
     produced: set[str] = set()  # variables available via capture/store_as
+    # matrix rows seed the capture store before any step, so their keys are available
+    # to every step's {{var}} references.
+    if "matrix" in flow:
+        raw = flow.get("matrix")
+        if not isinstance(raw, list) or not raw or not all(isinstance(r, dict) for r in raw):
+            errors.append("'matrix' must be a non-empty list of objects")
+        else:
+            for row in raw:
+                produced.update(row.keys())
+
     for i, step in enumerate(flow["steps"]):
         action = step.get("action")
         prefix = f"step #{i} ({action})"
