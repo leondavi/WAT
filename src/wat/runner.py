@@ -62,7 +62,10 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
     with RunLogger(app=config.app_name, log_dir=config.log_dir, flow_stem=stem,
                    level=config.log_level, keep_runs=config.keep_runs) as log:
         log.wat(f"flow '{name}' - {len(flow['steps'])} steps @ {config.base_url}")
-        driver = Driver(config, log, session=session)
+        # A flow may pin its own storage_state (or clear it) without disturbing the rest
+        # of the config; storage_state is a context kwarg, so this works on a shared
+        # --all browser too (each flow still gets its own fresh context).
+        driver = Driver(_flow_config(config, flow), log, session=session)
         failed_index: int | None = None
         failed_action: str | None = None
         summary: dict[str, Any] = {}
@@ -302,6 +305,13 @@ def _final_checks(driver: Driver, config: WatConfig, soft_failures: list[str]) -
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _flow_config(config: WatConfig, flow: dict) -> WatConfig:
+    """Apply a flow-level ``storage_state`` override (if any) to the config."""
+    if "storage_state" not in flow:
+        return config
+    return replace(config, storage_state=flow.get("storage_state") or None)
+
 
 def _ctx_for_report(driver: Driver, config: WatConfig, flow: dict, stem: str, log: RunLogger) -> StepContext:
     return StepContext(page=driver.page, browser_context=driver.context, driver=driver,

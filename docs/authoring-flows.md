@@ -64,6 +64,29 @@ in a subdirectory (so `--all` never runs it standalone) and pull it in with a `u
 The fragment's steps are inlined at load time; captured `{{var}}`s are shared with the
 parent. See `CONTRACT.md` for the full rules (path resolution, cycles, nesting).
 
+## Reuse a login across flows (`storage_state`)
+
+Logging in once per flow is slow. Save the authenticated session once, then restore it
+everywhere so authenticated flows skip the login form:
+
+```json
+// flows/fragments/fl_auth_setup.json  — run once (or first)
+{"name": "Auth setup", "steps": [
+  {"use": "fragments/fl_login.json"},
+  {"action": "save_storage_state", "path": "artifacts/auth/admin.json"}
+]}
+```
+
+```toml
+# wat.toml — every flow restores it (skips login)
+storage_state = "artifacts/auth/admin.json"
+```
+
+A flow may override with a top-level `"storage_state"` key, or set it to `""` to force a
+fresh (logged-out) context. If the file doesn't exist yet, WAT warns and starts fresh
+rather than failing. **Never commit a storage-state file** — it holds live session
+cookies; keep it under `artifacts/` (gitignored) or another untracked path.
+
 ## Custom actions (app plugins)
 
 If your app needs an action WAT doesn't ship, register it in a plugin module and add

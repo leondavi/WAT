@@ -21,6 +21,7 @@ A flow is one JSON file named `fl_<name>.json` (the `fl_` prefix is enforced).
 | `description` | string | no | Documentation only (never parsed). |
 | `label` | string \| [string] | no | Hierarchical tag, e.g. `"sheet/smoke"`. Filter with `--label <prefix>`. |
 | `base_url` | string | no | Overrides config `base_url` for this flow. |
+| `storage_state` | string | no | Restore this saved storage-state file into the flow's context (empty = force a fresh context). Overrides config `storage_state`. |
 | `steps` | [step] | **yes** | Ordered, non-empty list of step objects. |
 
 Any other top-level key is ignored.

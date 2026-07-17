@@ -47,6 +47,7 @@ _Generated from the registry (core + bundled extensions). Run `wat --print-actio
 | `emulate` | — | Emulate offline / geolocation / color-scheme / media. |
 | `get_storage` | `name` | Read a storage key into the capture store (needs store_as). |
 | `handle_dialog` | — | Auto-handle the next dialog: accept | dismiss (with optional prompt text). |
+| `save_storage_state` _(alias: save_auth)_ | — | Persist cookies + localStorage to a file for reuse via config.storage_state. |
 | `set_cookie` | `name`, `value` | Add a cookie scoped to the base URL. |
 | `set_storage` | `name`, `value` | Set a local/session storage key (area defaults to local). |
 | `set_viewport` | `width`, `height` | Resize the viewport. |

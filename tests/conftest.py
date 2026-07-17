@@ -96,6 +96,20 @@ class FakeDriver:
     def console_matches(self, pattern): return self._matches
 
 
+class FakeContext:
+    """Minimal Playwright BrowserContext stand-in; records storage_state saves."""
+
+    def __init__(self):
+        self.saved_to: str | None = None
+
+    def storage_state(self, path: str | None = None):
+        self.saved_to = path
+        return {"cookies": [], "origins": []}
+
+    def clear_cookies(self, *a, **k): pass
+    def add_cookies(self, *a, **k): pass
+
+
 class NullLog:
     dir = None
     def wat(self, *a, **k): pass
@@ -106,11 +120,12 @@ class NullLog:
 
 
 def make_ctx(step: dict, *, page: FakePage | None = None, driver: FakeDriver | None = None,
-             config: WatConfig | None = None, store: dict | None = None) -> StepContext:
+             config: WatConfig | None = None, store: dict | None = None,
+             browser_context: Any = None) -> StepContext:
     page = page or FakePage()
     driver = driver or FakeDriver()
     driver.page = page
-    return StepContext(page=page, browser_context=None, driver=driver,
+    return StepContext(page=page, browser_context=browser_context, driver=driver,
                        config=config or WatConfig(wait_ms=200), flow={}, flow_stem="fl_test",
                        log=NullLog(), store=store if store is not None else {}, step=step)
 

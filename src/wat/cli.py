@@ -64,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
                    default=None, help="Headed: hold the browser open on failure to inspect.")
     p.add_argument("--stream-console", dest="stream_console", action="store_const", const=True,
                    default=None, help="Stream browser console/errors live (auto-on when headed).")
+    p.add_argument("--storage-state", dest="storage_state",
+                   help="Path to a saved storage state (cookies + localStorage) to restore into each flow.")
     p.add_argument("--trace", choices=["off", "on", "on-failure"], help="Playwright trace capture.")
     p.add_argument("--video", choices=["off", "on", "on-failure"], help="Video capture.")
     p.add_argument("--wait-ms", type=int)
@@ -75,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _overrides(args: argparse.Namespace) -> dict:
     keys = ("base_url", "browser", "channel", "headless", "slow_mo_ms", "devtools",
-            "pause_on_failure", "stream_console", "trace", "video",
+            "pause_on_failure", "stream_console", "trace", "video", "storage_state",
             "workers", "fail_fast", "wait_ms", "flows_dir", "app_name", "log_dir")
     overrides = {k: getattr(args, k) for k in keys if getattr(args, k) is not None}
     # --live is a convenience: visible browser + gentle slow-mo (unless overridden).
@@ -231,6 +233,11 @@ def _doctor(cfg: WatConfig) -> int:
     print(f"  base_url    : {cfg.base_url}")
     print(f"  flows_dir   : {cfg.flows_path()}")
     print(f"  log_dir     : {cfg.log_dir or '(temp default)'}")
+    if cfg.storage_state:
+        from .driver import _resolve_storage_state
+
+        ss_path, ss_exists = _resolve_storage_state(cfg)
+        print(f"  storage     : {ss_path}  ({'found' if ss_exists else 'MISSING - run the setup flow'})")
 
     core_actions = len(REGISTRY.names())
     ext_results = plugins.load_reporting(list(cfg.extensions), cfg.root)

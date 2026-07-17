@@ -44,6 +44,34 @@ def build_launch_kwargs(config: WatConfig) -> tuple[str, dict[str, Any]]:
     return kind, kwargs
 
 
+def _resolve_storage_state(config: WatConfig) -> tuple[Path | None, bool]:
+    """Return (resolved storage-state path, exists?). Relative paths join config.root."""
+    if not config.storage_state:
+        return None, False
+    p = Path(config.storage_state)
+    if not p.is_absolute():
+        p = Path(config.root) / p
+    return p, p.exists()
+
+
+def build_context_kwargs(config: WatConfig) -> dict[str, Any]:
+    """Return the ``browser.new_context`` kwargs for a config.
+
+    Pure and side-effect-free (mirrors :func:`build_launch_kwargs`) so the viewport /
+    video / storage-state wiring is unit-testable without launching a browser. A
+    configured-but-missing storage-state file is simply omitted here; the caller warns.
+    """
+    kwargs: dict[str, Any] = {
+        "viewport": {"width": config.viewport_width, "height": config.viewport_height},
+    }
+    if config.video != "off":
+        kwargs["record_video_dir"] = str((config.artifacts_path() / "video"))
+    path, exists = _resolve_storage_state(config)
+    if path and exists:
+        kwargs["storage_state"] = str(path)
+    return kwargs
+
+
 class BrowserSession:
     """A launched Playwright browser that can be reused across many flows.
 
@@ -121,11 +149,16 @@ class Driver:
         self.browser = self._session.browser
         self._stream = self.config.stream_console_effective()
 
-        context_kwargs: dict[str, Any] = {
-            "viewport": {"width": self.config.viewport_width, "height": self.config.viewport_height}
-        }
         if self.config.video != "off":
-            context_kwargs["record_video_dir"] = str(self._video_dir())
+            self._video_dir()  # ensure the dir exists (Playwright records into it)
+        context_kwargs = build_context_kwargs(self.config)
+        # A configured storage-state file that doesn't exist yet (e.g. the setup flow
+        # hasn't run) is a warning, not a failure — start with a fresh context.
+        ss_path, ss_exists = _resolve_storage_state(self.config)
+        if ss_path and not ss_exists:
+            self.log.wat(f"storage_state {ss_path} not found; starting with a fresh context", level="warn")
+        elif ss_path:
+            self.log.wat(f"restoring storage_state from {ss_path}")
         self.context = self.browser.new_context(**context_kwargs)
         self.context.set_default_timeout(self.config.wait_ms)
 

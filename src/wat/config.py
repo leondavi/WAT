@@ -52,6 +52,11 @@ class WatConfig:
     wait_ms: int = 10_000
     trace: str = "on-failure"             # off | on | on-failure
     video: str = "off"                    # off | on | on-failure
+    # Path to a saved Playwright storage state (cookies + localStorage). When set and the
+    # file exists, it is restored into every flow's context so authenticated flows skip
+    # the login form. Write it once with the `save_storage_state` action. A flow may
+    # override with a top-level `storage_state` key (empty = force a fresh context).
+    storage_state: str | None = None
 
     # Live-run ergonomics.
     stream_console: bool | None = None     # stream [BROWSER] console/pageerror live; None = auto (on when headed)

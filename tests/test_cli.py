@@ -64,6 +64,20 @@ def test_workers_and_fail_fast_and_report_flags():
     assert ov["workers"] == 4 and ov["fail_fast"] is True
 
 
+def test_storage_state_flag_maps_to_override():
+    ov = _parse(["--all", "--storage-state", "artifacts/auth/admin.json"])
+    assert ov["storage_state"] == "artifacts/auth/admin.json"
+
+
+def test_doctor_reports_storage_state(tmp_path, capsys):
+    from wat.cli import main
+
+    (tmp_path / "wat.toml").write_text('storage_state = "auth/admin.json"\n')
+    main(["--doctor", "--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "storage" in out and "MISSING" in out  # configured but not yet created
+
+
 def test_no_emojis_in_cli_or_installer():
     import re
     from pathlib import Path
