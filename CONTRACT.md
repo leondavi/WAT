@@ -104,7 +104,7 @@ to an uncaptured variable is a validation error.
 See [`docs/action-catalog.md`](docs/action-catalog.md) for the full, generated list
 with required fields, or run `wat --print-actions`. Groups: navigation, interaction,
 browser/session, network, capture, scripting, assertions, plus opt-in extensions
-(liveview, sql, auth).
+(liveview, sql, auth, visual).
 
 ### `assert_js` — the workhorse
 

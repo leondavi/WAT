@@ -31,7 +31,7 @@ jobs:
           cache: pip
 
       - name: Install WAT (with extras + dev tools)
-        run: pip install -e ".[dev,sql,liveview]"
+        run: pip install -e ".[dev,sql,liveview,visual]"
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -55,12 +55,16 @@ jobs:
         run: wat --validate-only --all --root .
 
       - name: Run hermetic example flows (headless browser)
-        run: wat --all --headless --root . --report wat-report.xml
+        run: |
+          wat --all --headless --root . --report wat-report.xml
+          wat --all --headless --root . --report wat-report.html --report-format html
 
-      - name: Upload run report
+      - name: Upload run reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: wat-report-py${{ matrix.python-version }}
-          path: wat-report.xml
+          path: |
+            wat-report.xml
+            wat-report.html
           if-no-files-found: ignore

@@ -38,6 +38,21 @@ and see [`CONTRACT.md`](../CONTRACT.md) for the full schema.
 - **Validate before running:** `wat --validate-only --all` catches unknown actions,
   missing fields, and unresolved variables without launching a browser.
 
+## Visual regression (`assert_screenshot`)
+
+Opt in with `extensions = ["visual"]` (installs the `[visual]` extra for Pillow). The
+`assert_screenshot` action captures the page (or a `selector` element) and diffs it against
+a committed baseline PNG:
+
+```json
+{"action": "assert_screenshot", "name": "dashboard", "max_diff_ratio": 0.01}
+```
+
+The first run (or `--update-baselines`) writes the baseline under `visual_baseline_dir`
+(default `<root>/baselines`, meant to be committed) and passes; later runs fail if more
+than `max_diff_ratio` of pixels differ, writing a `.diff.png` into the run dir. Tune
+`max_diff_ratio` / `pixel_threshold` to absorb anti-aliasing noise across machines.
+
 ## Reusable fragments (`use`)
 
 Share a login/setup preamble across flows instead of copy-pasting it. Put the fragment

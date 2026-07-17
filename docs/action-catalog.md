@@ -128,3 +128,9 @@ _Generated from the registry (core + bundled extensions). Run `wat --print-actio
 |---|---|---|
 | `logout` | — | Clear cookies and navigate to the configured logout/login path. |
 
+## Visual regression (ext)
+
+| action | required | description |
+|---|---|---|
+| `assert_screenshot` | `name` | Compare a screenshot against a committed baseline (visual regression). |
+

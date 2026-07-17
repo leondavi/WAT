@@ -1,0 +1,10 @@
+{
+  "name": "Example: visual regression with assert_screenshot",
+  "label": "example/visual",
+  "description": "Captures a screenshot and compares it to a baseline (visual regression). The baseline dir is gitignored here so a fresh checkout self-establishes it and passes; commit real baselines in your app. Hermetic (data: URL, no server).",
+  "steps": [
+    {"action": "open", "url": "data:text/html,<title>WAT</title><body style='margin:0;background:%23336699;width:100vw;height:100vh'></body>"},
+    {"action": "assert_screenshot", "name": "example_home", "baseline_dir": "artifacts/baselines",
+     "comment": "first run writes the baseline and passes; later runs diff against it"}
+  ]
+}
