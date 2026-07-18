@@ -132,6 +132,10 @@ def _coerce(name: str, raw: str) -> Any:
         return int(raw)
     if typ in ("float", float):
         return float(raw)
+    # List fields (plugins, extensions): accept a comma-separated string from env/TOML
+    # scalars, e.g. WAT_EXTENSIONS="visual,sql". (TOML arrays already arrive as lists.)
+    if typ is list or (isinstance(typ, str) and typ.startswith("list")):
+        return [item.strip() for item in raw.split(",") if item.strip()]
     return raw
 
 
