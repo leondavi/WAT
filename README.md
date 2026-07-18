@@ -66,6 +66,14 @@ wat --all --report out.xml      # JUnit report for CI (--report-format junit|jso
 wat --all --report out.html --report-format html   # self-contained HTML report (screenshots inline)
 ```
 
+## Authoring
+
+```bash
+wat --record                    # record a browser session into a draft flow
+wat --validate-only --all       # lint flows (schema, actions, variables) without a browser
+wat --print-actions             # the full action catalog, including your plugins
+```
+
 ## Documentation
 
 - [`CONTRACT.md`](CONTRACT.md) — the canonical flow schema + action contract (the source of truth).

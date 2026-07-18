@@ -1,8 +1,19 @@
 # Authoring flows
 
 A flow is a JSON list of steps run against a browser. Start from
-[`docs/flow-template.json`](flow-template.json) (copy it to `flows/fl_<name>.json`)
-and see [`CONTRACT.md`](../CONTRACT.md) for the full schema.
+[`docs/flow-template.json`](flow-template.json) (copy it to `flows/fl_<name>.json`),
+or record a draft from a real session with `wat --record` — see
+[`CONTRACT.md`](../CONTRACT.md) for the full schema.
+
+## Recording a draft (`wat --record`)
+
+`wat --record [--flow flows/fl_name.json]` opens a headed browser at `base_url` and
+captures what you do — clicks, typing (coalesced to the final value), select/checkbox
+changes, Enter/Escape — inferring stable selectors (`data-testid` > `id` > `role`+name >
+`name` > short CSS path). Close the browser to write the file.
+
+The output is a **draft**: review the selectors, add the assertions that express what
+you meant to verify, and lint with `wat --validate-only --flow <file>`.
 
 ## Minimal flow
 

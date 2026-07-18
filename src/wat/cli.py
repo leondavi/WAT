@@ -5,6 +5,7 @@
     wat --all --workers 4 --fail-fast       run in parallel; stop on first failure
     wat --all --report out.xml              write a JUnit report (--report-format junit|json)
     wat --list                              list discovered flows
+    wat --record [--flow F]                 record a browser session into a draft flow
     wat --validate-only [--all|--flow F]    lint flows without a browser
     wat --print-actions                     show the registered action catalog
     wat --doctor                            check the environment + plugin/extension wiring
@@ -38,6 +39,10 @@ def build_parser() -> argparse.ArgumentParser:
     # just F's directory (see _migrate, which reads args.flow).
     p.add_argument("--migrate", action="store_true", help="Report/convert legacy flows to canonical form.")
     p.add_argument("--write", action="store_true", help="With --migrate: rewrite flow files in place.")
+    # --record is standalone for the same reason: --flow optionally names its output file.
+    p.add_argument("--record", action="store_true",
+                   help="Open a headed browser and record interactions into a draft flow "
+                        "(--flow names the output, default flows/fl_recorded.json).")
     p.add_argument("--validate-only", action="store_true", help="Validate flows without running a browser.")
     p.add_argument("--label", help="Filter --all/--list by label prefix.")
     p.add_argument("--grep", help="Filter --all/--list by substring of the flow file name, name, or label.")
@@ -108,6 +113,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.print_actions:
         return _print_actions()
+    if args.record:
+        return _record(cfg, args)
     if args.migrate:
         return _migrate(cfg, args)
     if args.list:
@@ -196,6 +203,20 @@ def _validate(cfg: WatConfig, args: argparse.Namespace) -> int:
             print(f"[PASS] {Path(path).name}")
     print(f"\n{total_errors} error(s) across {len(targets)} flow(s).")
     return 1 if total_errors else 0
+
+
+def _record(cfg: WatConfig, args: argparse.Namespace) -> int:
+    from .recorder import record_flow
+
+    out = args.flow or (cfg.flows_path() / "fl_recorded.json")
+    out = Path(out)
+    if not out.name.startswith("fl_"):
+        print(f"Output flow must be named fl_<name>.json, got: {out.name}")
+        return 1
+    path = record_flow(cfg, out)
+    print(f"Recorded flow written to {path}")
+    print(f"Review it, then lint with: wat --validate-only --flow {path}")
+    return 0
 
 
 def _migrate(cfg: WatConfig, args: argparse.Namespace) -> int:
