@@ -38,6 +38,22 @@ and see [`CONTRACT.md`](../CONTRACT.md) for the full schema.
 - **Validate before running:** `wat --validate-only --all` catches unknown actions,
   missing fields, and unresolved variables without launching a browser.
 
+## Accessibility (`assert_a11y`)
+
+Opt in with `extensions = ["a11y"]`. The builtin engine (zero deps) checks the common
+WCAG regressions — images without `alt`, buttons/links without accessible names,
+unlabeled form controls, missing `<html lang>`, duplicate ids, positive `tabindex`,
+focusables inside `aria-hidden`:
+
+```json
+{"action": "assert_a11y"}
+{"action": "assert_a11y", "selector": "#main", "rules": ["img-alt", "label"], "allow": 1}
+```
+
+For full rule coverage, point `a11y_axe_path` (config) or `axe_path` (step) at an
+`axe.min.js` your app provides and use `{"engine": "axe", "tags": ["wcag2aa"]}` —
+WAT injects it and reports axe's violations in the same shape.
+
 ## Visual regression (`assert_screenshot`)
 
 Opt in with `extensions = ["visual"]` (installs the `[visual]` extra for Pillow). The

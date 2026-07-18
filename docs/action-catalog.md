@@ -134,3 +134,9 @@ _Generated from the registry (core + bundled extensions). Run `wat --print-actio
 |---|---|---|
 | `assert_screenshot` | `name` | Compare a screenshot against a committed baseline (visual regression). |
 
+## Accessibility (ext)
+
+| action | required | description |
+|---|---|---|
+| `assert_a11y` | — | Assert no accessibility violations (builtin checks or app-provided axe). |
+
