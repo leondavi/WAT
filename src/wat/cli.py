@@ -32,8 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--list", action="store_true", help="List discovered flows and exit.")
     mode.add_argument("--print-actions", action="store_true", help="Print the action catalog and exit.")
     mode.add_argument("--doctor", action="store_true", help="Check the environment and exit.")
-    mode.add_argument("--migrate", action="store_true", help="Report/convert legacy flows to canonical form.")
 
+    # --migrate is a standalone mode (not in the exclusive group) so it can take an
+    # optional --flow target: `--migrate` migrates the whole flows dir, `--migrate --flow F`
+    # just F's directory (see _migrate, which reads args.flow).
+    p.add_argument("--migrate", action="store_true", help="Report/convert legacy flows to canonical form.")
     p.add_argument("--write", action="store_true", help="With --migrate: rewrite flow files in place.")
     p.add_argument("--validate-only", action="store_true", help="Validate flows without running a browser.")
     p.add_argument("--label", help="Filter --all/--list by label prefix.")

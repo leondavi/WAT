@@ -69,6 +69,25 @@ def test_storage_state_flag_maps_to_override():
     assert ov["storage_state"] == "artifacts/auth/admin.json"
 
 
+def test_migrate_accepts_a_flow_target():
+    # regression: --migrate was mutually exclusive with --flow, so `--migrate --flow F`
+    # (which _migrate supports by reading args.flow) errored at parse time.
+    args = build_parser().parse_args(["--migrate", "--flow", "flows/fl_x.json"])
+    assert args.migrate is True and str(args.flow) == "flows/fl_x.json"
+
+
+def test_migrate_single_flow_runs(tmp_path, capsys):
+    import json
+    from wat.cli import main
+
+    legacy = tmp_path / "fl_legacy.json"
+    legacy.write_text(json.dumps({"name": "l", "steps": [
+        {"action": "type", "by": "link_text", "selector": "Go", "text": "hi"}]}))
+    rc = main(["--migrate", "--flow", str(legacy)])
+    out = capsys.readouterr().out
+    assert rc == 0 and "link_text" in out and "analyzed 1 flow" in out
+
+
 def test_doctor_reports_storage_state(tmp_path, capsys):
     from wat.cli import main
 
