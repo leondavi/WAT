@@ -1,0 +1,11 @@
+{
+  "name": "Example: accessibility assertions",
+  "label": "example/a11y",
+  "description": "assert_a11y runs builtin WCAG checks (img alt, control names, labels, lang, dup ids...). Hermetic (data: URL, no server). Use engine:'axe' with an app-provided axe.min.js for full coverage.",
+  "steps": [
+    {"action": "open", "url": "data:text/html,<html lang='en'><head><title>WAT</title></head><body><img src='x.png' alt='logo'><button>Save</button><label>Email <input type='text'></label></body></html>"},
+    {"action": "assert_a11y", "comment": "clean page: zero violations expected"},
+    {"action": "assert_a11y", "selector": "body", "rules": ["img-alt", "control-name"],
+     "comment": "scoped to a subtree, restricted to two rules"}
+  ]
+}

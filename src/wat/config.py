@@ -74,6 +74,9 @@ class WatConfig:
     # Off by default so it never surprises existing flows; assert_no_console_errors is explicit.
     fail_on_pageerror: bool = False
 
+    # Accessibility (wat.ext.a11y): path to an app-provided axe.min.js for engine "axe".
+    a11y_axe_path: str | None = None
+
     # Visual regression (wat.ext.visual; opt in via extensions=["visual"], [visual] extra).
     visual_baseline_dir: str | None = None   # where baseline PNGs live (default: <root>/baselines)
     visual_update: bool = False               # (re)write baselines instead of comparing
