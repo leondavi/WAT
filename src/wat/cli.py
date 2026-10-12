@@ -160,17 +160,27 @@ def _run_all(cfg: WatConfig, args: argparse.Namespace) -> int:
     skipped = sum(1 for f in flows if f not in ran)
 
     print("\n" + "=" * 60)
-    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, {skipped} skipped")
+    warned = sum(1 for r in results if r.warnings)
+    warn_note = f", {warned} with warnings" if warned else ""
+    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, {skipped} skipped{warn_note}")
     for r in passed:
         print(f"  [PASS] {r.path.name}  ({r.duration_ms}ms)")
+        _print_warnings(r)
     for r in failed:
         why = f" - {r.source}: {r.message}" if r.message else ""
         print(f"  [FAIL] {r.path.name}  ({r.duration_ms}ms){why}")
+        _print_warnings(r)
 
     if args.report:
         path = reports.write_report(results, args.report, args.report_format)
         print(f"\nReport ({args.report_format}) written to {path}")
     return 1 if failed else 0
+
+
+def _print_warnings(result) -> None:
+    """Print a flow's non-fatal warnings (e.g. a skipped reset) under its result line."""
+    for message in result.warnings:
+        print(f"         [WARN] {message}")
 
 
 def _list(cfg: WatConfig, args: argparse.Namespace) -> int:

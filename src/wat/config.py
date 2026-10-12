@@ -93,6 +93,15 @@ class WatConfig:
     extensions: list[str] = field(default_factory=list)    # e.g. ["liveview", "sql"]
     auth_provider: str | None = None
     reset_hook: str | None = None
+    # Reset-hook robustness (issue #8). A reset hook reports "skipped" by returning
+    # False / {"pass": False, "reason": ...} (or raising); that becomes a flow WARNING
+    # in run.json, the --all summary, and reports. reset_required turns it into a
+    # failure instead (a flow-level "reset_required" key overrides this default).
+    reset_required: bool = False
+    # Budget + attempts for wat.ext.liveview.wait_for_join (the readiness wait a
+    # LiveView reset hook uses before pushing its reset event).
+    reset_join_timeout_ms: int = 30_000
+    reset_join_attempts: int = 3
     credentials_source: str | None = None
 
     # Failure reporting.

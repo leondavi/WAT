@@ -22,6 +22,7 @@ A flow is one JSON file named `fl_<name>.json` (the `fl_` prefix is enforced).
 | `label` | string \| [string] | no | Hierarchical tag, e.g. `"sheet/smoke"`. Filter with `--label <prefix>`. |
 | `base_url` | string | no | Overrides config `base_url` for this flow. |
 | `storage_state` | string | no | Restore this saved storage-state file into the flow's context (empty = force a fresh context). Overrides config `storage_state`. |
+| `reset_required` | bool | no | If the app's `@reset_hook` reports a skipped reset, fail the flow before step 0 instead of running it with a WARNING. Overrides config `reset_required` (default `false`). |
 | `matrix` | [object] | no | Data-driven rows. The flow runs once per row with each row's keys seeded into the `{{var}}` store. |
 | `steps` | [step] | **yes** | Ordered, non-empty list of step objects. |
 
@@ -171,6 +172,42 @@ config `plugins`. Hook phases are `before_flow`, `before_step`, `after_step`, an
 is logged and never masks the flow result). Core actions never need forking. See
 [`docs/authoring-flows.md`](docs/authoring-flows.md) and
 [`docs/migrating-from-selenium.md`](docs/migrating-from-selenium.md).
+
+### Reset hooks
+
+A `@reset_hook` runs once per flow, after the browser context opens and before step 0
+(the page is still blank, so a hook that needs the app navigates itself). It reports
+like an action handler:
+
+| Hook returns | Meaning |
+|--------------|---------|
+| `None` / `True` / `{"pass": true}` | Reset done. |
+| `False` / `{"pass": false, "reason": "..."}`, or raises | Reset **skipped**. |
+
+A skipped reset is never silent: the flow continues but records a **WARNING**
+(`[WAT] WARNING: reset hook skipped: <reason>` in `wat.log`, `warnings` in `run.json`,
+`[WARN]` lines in the `--all` summary, and in JSON/JUnit/HTML reports). With
+`reset_required` (flow key or config) it instead fails the flow (source `app`, failed
+action `reset`). Plugins can record their own warnings with `ctx.warn(message)`.
+
+LiveView apps (`extensions = ["liveview"]`) should wait for the channel join with
+`wat.ext.liveview.wait_for_join(ctx)` before pushing their reset event (e.g. via
+`wat.ext.liveview.push_event(ctx, "app:reset")`). It waits up to config
+`reset_join_timeout_ms` (default 30000) split over `reset_join_attempts` tries
+(default 3), reloading the page between tries, and returns `False` instead of raising:
+
+```python
+from wat import reset_hook
+from wat.ext.liveview import push_event, wait_for_join
+
+@reset_hook
+def reset_chat(ctx):
+    ctx.page.goto(ctx.base_url)
+    if not wait_for_join(ctx):
+        return {"pass": False, "reason": "no joined LiveView channel in time"}
+    result = push_event(ctx, "chat:clear")
+    return {"pass": result["ok"], "reason": result.get("reason")}
+```
 
 ---
 

@@ -110,6 +110,7 @@ def write_failure_artifacts(*, ctx: Any, driver: Any, log: Any, exc: BaseExcepti
         "failed_action": failed_action,
         "error": str(exc),
         "reason": reason,
+        "warnings": list(getattr(ctx, "warnings", [])),
         "branch": branch,
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "artifacts": {
@@ -129,6 +130,7 @@ def write_success_summary(*, ctx: Any, log: Any, steps_run: int) -> dict[str, An
         "source": None,
         "flow": ctx.flow_stem,
         "steps_run": steps_run,
+        "warnings": list(getattr(ctx, "warnings", [])),
         "finished_at": datetime.now(timezone.utc).isoformat(),
     }
     log.write_json("run.json", summary)

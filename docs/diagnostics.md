@@ -39,6 +39,16 @@ On failure, `run.json` sets `source` to one of:
 The generated `agent_prompt.txt` leads with this classification, the exact failing
 step, and the assertion reason — so a human or a fix-it agent starts at the right layer.
 
+## Warnings
+
+Some problems don't fail a flow but make its result less trustworthy -- most notably a
+`@reset_hook` that reports a **skipped** reset (the flow ran against dirty app state).
+These are recorded as warnings: a `[WAT] WARNING: ...` line in `wat.log`, a `warnings`
+list in `run.json` (pass or fail), `[WARN]` lines under the flow in the `--all`
+summary, and in reports (`warnings` / `warned` in JSON, `<system-out>` in JUnit, a
+WARN badge in HTML). Set `reset_required = true` (config or flow key) to fail instead.
+See `CONTRACT.md` section 7 ("Reset hooks").
+
 ## Live runs
 
 When you watch a headed run (`--live` / `--headed` / `--slow-mo`), WAT turns on live

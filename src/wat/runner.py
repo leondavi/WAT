@@ -11,7 +11,7 @@ from __future__ import annotations
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +39,7 @@ class FlowResult:
     failed_step: int | None = None
     message: str | None = None
     log_dir: Path | None = None
+    warnings: list[str] = field(default_factory=list)  # non-fatal issues (e.g. skipped reset)
 
 
 def run_flow(flow_path: str | Path, config: WatConfig, registry: Registry = REGISTRY) -> int:
@@ -73,6 +74,7 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
     started = time.monotonic()
 
     soft_failures: list[str] = []
+    warnings: list[str] = []  # shared with every StepContext of this flow (ctx.warn)
     with RunLogger(app=config.app_name, log_dir=config.log_dir, flow_stem=log_stem,
                    level=config.log_level, keep_runs=config.keep_runs) as log:
         log.wat(f"flow '{name}' - {len(flow['steps'])} steps @ {config.base_url}")
@@ -89,13 +91,14 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
             driver.start()
             ctx = StepContext(page=driver.page, browser_context=driver.context, driver=driver,
                               config=config, flow=flow, flow_stem=log_stem, log=log,
-                              store=dict(initial_store or {}))
+                              store=dict(initial_store or {}), warnings=warnings)
 
             for hook in registry.hooks("before_flow"):
                 hook(ctx)
             reset = registry.get_reset_hook()
             if reset is not None:
-                _safe_hook(reset, ctx, log, "reset")
+                failed_action = "reset"
+                _run_reset(reset, ctx)
 
             for index, step in enumerate(flow["steps"]):
                 step_ctx = replace(ctx, step=step)
@@ -113,7 +116,8 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
             _run_after_flow(registry, ctx, log)
             driver.drain_diagnostics()
             summary = write_success_summary(ctx=ctx, log=log, steps_run=len(flow["steps"]))
-            log.wat(f"PASSED ({len(flow['steps'])} steps)")
+            warned = f", {len(warnings)} warning(s)" if warnings else ""
+            log.wat(f"PASSED ({len(flow['steps'])} steps{warned})")
             driver.stop(save_trace=False)
 
         except BaseException as exc:  # noqa: BLE001 — we classify and report every failure
@@ -121,7 +125,8 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
             if ctx is not None:
                 _run_after_flow(registry, ctx, log)
             driver.drain_diagnostics()
-            summary = write_failure_artifacts(ctx=_ctx_for_report(driver, config, flow, log_stem, log),
+            summary = write_failure_artifacts(ctx=_ctx_for_report(driver, config, flow, log_stem, log,
+                                                                  warnings),
                                               driver=driver, log=log, exc=exc,
                                               failed_index=failed_index, failed_action=failed_action)
             log.wat(f"FAILED at step {failed_index} ({failed_action}): {exc}", level="error")
@@ -137,7 +142,7 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
             status="pass" if rc == 0 else "fail",
             duration_ms=int((time.monotonic() - started) * 1000),
             source=summary.get("source"), failed_step=summary.get("failed_step"),
-            message=summary.get("error"), log_dir=log.dir,
+            message=summary.get("error"), log_dir=log.dir, warnings=list(warnings),
         )
 
 
@@ -409,16 +414,38 @@ def _flow_config(config: WatConfig, flow: dict) -> WatConfig:
     return replace(config, storage_state=flow.get("storage_state") or None)
 
 
-def _ctx_for_report(driver: Driver, config: WatConfig, flow: dict, stem: str, log: RunLogger) -> StepContext:
+def _ctx_for_report(driver: Driver, config: WatConfig, flow: dict, stem: str, log: RunLogger,
+                    warnings: list[str]) -> StepContext:
     return StepContext(page=driver.page, browser_context=driver.context, driver=driver,
-                       config=config, flow=flow, flow_stem=stem, log=log)
+                       config=config, flow=flow, flow_stem=stem, log=log, warnings=warnings)
 
 
-def _safe_hook(hook: Any, ctx: StepContext, log: RunLogger, name: str) -> None:
+def _run_reset(hook: Any, ctx: StepContext) -> None:
+    """Run the app's pre-flow reset hook and act on its outcome.
+
+    The hook reports like an action handler: ``None``/``True`` = reset done;
+    ``False`` / ``{"pass": False, "reason": ...}`` or an exception = reset skipped.
+    A skipped reset means the flow would run against dirty app state, so it is never
+    silent: it becomes a flow WARNING (run.json, summary, reports), or -- when the flow
+    (or config) sets ``reset_required`` -- a failure before step 0.
+    """
     try:
-        hook(ctx)
-    except Exception as exc:  # a flaky reset must never mask real assertions
-        log.wat(f"{name} hook failed (ignored): {exc}", level="warn")
+        passed, reason = _interpret(hook(ctx), None)
+    except Exception as exc:  # noqa: BLE001 - classified below, never crashes the runner
+        passed, reason = False, f"{type(exc).__name__}: {exc}"
+    if passed:
+        return
+    message = f"reset hook skipped: {reason or 'no reason given'}"
+    if _reset_required(ctx):
+        raise StepFailure(f"{message} (reset_required)", source=SOURCE_APP,
+                          action="reset", reason=reason)
+    ctx.warn(f"{message} - flow ran against un-reset app state")
+
+
+def _reset_required(ctx: StepContext) -> bool:
+    """Flow-level ``reset_required`` wins over the config default."""
+    value = ctx.flow.get("reset_required")
+    return value if isinstance(value, bool) else bool(ctx.config.reset_required)
 
 
 def _describe(step: dict) -> str:
