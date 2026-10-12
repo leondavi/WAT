@@ -59,6 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Config overrides (default None so unset flags don't clobber file/env config).
     p.add_argument("--base-url")
+    p.add_argument("--force-base-url", dest="base_url_override", action="store_const", const=True,
+                   default=None, help="Let base_url win over a flow's own base_url key.")
     p.add_argument("--browser", choices=["chromium", "chrome", "edge", "firefox", "webkit"])
     p.add_argument("--headless", dest="headless", action="store_const", const=True, default=None)
     p.add_argument("--headed", dest="headless", action="store_const", const=False,
@@ -87,8 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _overrides(args: argparse.Namespace) -> dict:
-    keys = ("base_url", "browser", "channel", "headless", "slow_mo_ms", "devtools",
-            "pause_on_failure", "stream_console", "trace", "video", "storage_state",
+    keys = ("base_url", "base_url_override", "browser", "channel", "headless", "slow_mo_ms",
+            "devtools", "pause_on_failure", "stream_console", "trace", "video", "storage_state",
             "visual_update", "workers", "fail_fast", "wait_ms", "flows_dir", "app_name", "log_dir")
     overrides = {k: getattr(args, k) for k in keys if getattr(args, k) is not None}
     # --live is a convenience: visible browser + gentle slow-mo (unless overridden).
@@ -282,7 +284,9 @@ def _doctor(cfg: WatConfig) -> int:
     ok = True
     print("WAT doctor")
     print(f"  config root : {cfg.root}")
-    print(f"  base_url    : {cfg.base_url}")
+    wins = ("wins over flow base_url (--force-base-url)" if cfg.base_url_override
+            else "default; a flow's own base_url wins")
+    print(f"  base_url    : {cfg.base_url}  ({wins})")
     print(f"  flows_dir   : {cfg.flows_path()}")
     print(f"  log_dir     : {cfg.log_dir or '(temp default)'}")
     if cfg.storage_state:

@@ -105,3 +105,8 @@ def test_no_emojis_in_cli_or_installer():
     root = Path(__file__).resolve().parent.parent
     for rel in ["src/wat/cli.py", "install.py", "src/wat/logging.py"]:
         assert not emoji.search((root / rel).read_text(encoding="utf-8")), f"emoji in {rel}"
+
+
+def test_force_base_url_flag():
+    assert _parse(["--all", "--force-base-url"])["base_url_override"] is True
+    assert "base_url_override" not in _parse(["--all", "--base-url", "http://x"])

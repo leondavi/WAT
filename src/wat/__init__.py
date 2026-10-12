@@ -15,7 +15,7 @@ starts), so plugins, validation, and unit tests work without a browser installed
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 # Public extension API.
 from .registry import (  # noqa: E402

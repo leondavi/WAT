@@ -20,7 +20,7 @@ A flow is one JSON file named `fl_<name>.json` (the `fl_` prefix is enforced).
 | `name` | string | recommended | Human-readable; shown by `--list`. |
 | `description` | string | no | Documentation only (never parsed). |
 | `label` | string \| [string] | no | Hierarchical tag, e.g. `"sheet/smoke"`. Filter with `--label <prefix>`. |
-| `base_url` | string | no | Overrides config `base_url` for this flow. |
+| `base_url` | string | no | Overrides config `base_url` for this flow, unless the run sets `base_url_override` (`--force-base-url` / `WAT_BASE_URL_OVERRIDE=1`), in which case config `base_url` wins. |
 | `storage_state` | string | no | Restore this saved storage-state file into the flow's context (empty = force a fresh context). Overrides config `storage_state`. |
 | `reset_required` | bool | no | If the app's `@reset_hook` reports a skipped reset, fail the flow before step 0 instead of running it with a WARNING. Overrides config `reset_required` (default `false`). |
 | `matrix` | [object] | no | Data-driven rows. The flow runs once per row with each row's keys seeded into the `{{var}}` store. |

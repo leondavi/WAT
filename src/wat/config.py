@@ -31,6 +31,9 @@ class WatConfig:
     """All knobs that shape a run. See ``CONTRACT.md`` for the authoritative docs."""
 
     base_url: str = "http://localhost:4000"
+    # When true, base_url beats a flow's own "base_url" key (issue #13), so flows that
+    # record a dev address can be pointed at another server (CI port, worktree, staging).
+    base_url_override: bool = False
     flows_dir: str = "flows"
     artifacts_dir: str = "artifacts"
 
