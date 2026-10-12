@@ -22,8 +22,8 @@ from typing import Any
 
 try:  # Python 3.11+
     import tomllib
-except ModuleNotFoundError:  # 3.10: TOML files are simply skipped if tomllib is absent.
-    tomllib = None  # type: ignore[assignment]
+except ModuleNotFoundError:  # 3.10: the API-compatible backport (a declared dependency).
+    import tomli as tomllib  # type: ignore[no-redef]
 
 
 @dataclass
@@ -81,6 +81,7 @@ class WatConfig:
     visual_baseline_dir: str | None = None   # where baseline PNGs live (default: <root>/baselines)
     visual_update: bool = False               # (re)write baselines instead of comparing
     visual_max_diff_ratio: float = 0.0        # max fraction of differing pixels allowed (0 = exact)
+    visual_require_baseline: bool = False     # fail (not self-create) when a baseline is missing; use in CI
 
     # Extensibility.
     plugins: list[str] = field(default_factory=list)       # import strings
@@ -150,7 +151,7 @@ def _apply(cfg: WatConfig, values: dict[str, Any]) -> WatConfig:
 
 
 def _load_toml(path: Path, table: str | None = None) -> dict[str, Any]:
-    if tomllib is None or not path.exists():
+    if not path.exists():
         return {}
     with path.open("rb") as fh:
         data = tomllib.load(fh)

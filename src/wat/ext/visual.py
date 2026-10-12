@@ -85,6 +85,11 @@ def assert_screenshot(ctx: StepContext) -> dict:
     _take_shot(ctx, actual)
 
     update = bool(ctx.step.get("update", ctx.config.visual_update))
+    require = bool(ctx.step.get("require_baseline", ctx.config.visual_require_baseline))
+    if not update and require and not baseline.exists():
+        # Self-creating a baseline in CI would let an uncommitted baseline pass forever.
+        return {"pass": False, "reason": f"visual baseline missing: {baseline} "
+                                         "(run with visual_update to create it, then commit it)"}
     if update or not baseline.exists():
         baseline.parent.mkdir(parents=True, exist_ok=True)
         baseline.write_bytes(actual.read_bytes())

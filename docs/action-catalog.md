@@ -84,7 +84,7 @@ _Generated from the registry (core + bundled extensions). Run `wat --print-actio
 
 | action | required | description |
 |---|---|---|
-| `assert_attribute` | `selector`, `attr` | Element attribute equals/contains value. |
+| `assert_attribute` | `selector`, `attr` | Element attribute equals/contains value (no value: attribute is present). |
 | `assert_checked` | `selector` | Checkbox/radio is checked. |
 | `assert_console_match` | `pattern` | Some console message matches a regex. |
 | `assert_disabled` | `selector` | Element is disabled. |

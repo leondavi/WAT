@@ -18,7 +18,7 @@ for candidate in python3 python; do
 done
 
 if [ -z "$py" ]; then
-  echo "[wat-install] ❌ No Python 3.10+ found on PATH. Install one and retry." >&2
+  echo "[wat-install] ERROR: No Python 3.10+ found on PATH. Install one and retry." >&2
   exit 1
 fi
 

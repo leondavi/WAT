@@ -96,19 +96,26 @@ def assert_element_count(ctx: StepContext) -> dict:
 
 
 @register_action("assert_attribute", required=("selector", "attr"), group="assert",
-                 description="Element attribute equals/contains value.")
+                 description="Element attribute equals/contains value (no value: attribute is present).")
 def assert_attribute(ctx: StepContext) -> dict:
     attr = ctx.field("attr", required=True)
+    loc = ctx.locator()
+    if "value" not in ctx.step:
+        # No expected value means "the attribute is present" (e.g. disabled, aria-busy);
+        # comparing an absent attribute to "" would make this always pass.
+        ok = poll_until(lambda: loc.get_attribute(attr) is not None, ctx.timeout_ms())
+        return _verdict(ok, f"attribute {attr!r} is not present")
     want = str(ctx.field("value", ""))
     contains = ctx.step.get("contains")
-    loc = ctx.locator()
 
     def _matches() -> bool:
-        got = loc.get_attribute(attr) or ""
+        got = loc.get_attribute(attr)
+        if got is None:
+            return False
         return (want in got) if contains else (got == want)
 
     ok = poll_until(_matches, ctx.timeout_ms())
-    got = loc.get_attribute(attr) or ""
+    got = loc.get_attribute(attr)
     return _verdict(ok, f"attribute {attr}={got!r} did not match {want!r}")
 
 

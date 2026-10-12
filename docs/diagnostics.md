@@ -44,7 +44,7 @@ step, and the assertion reason — so a human or a fix-it agent starts at the ri
 When you watch a headed run (`--live` / `--headed` / `--slow-mo`), WAT turns on live
 diagnostics automatically so the terminal narrates what the browser is doing:
 
-- **Per-step intent** is logged *before* each step runs: `→ [n] <action> <target>`.
+- **Per-step intent** is logged *before* each step runs: `-> [n] <action> <target>`.
 - **Browser signals stream live**: `console.error`/`console.warning`, uncaught
   `pageerror`, and 4xx/5xx/failed requests appear on the `[BROWSER]` channel the
   moment they occur (not just at the end). Force it anywhere with `--stream-console`.

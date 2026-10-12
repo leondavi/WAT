@@ -13,6 +13,8 @@ authors = [{ name = "WAT" }]
 dependencies = [
     # Single engine dependency. Browsers are installed separately via `playwright install`.
     "playwright>=1.44",
+    # TOML config (wat.toml / [tool.wat]) on Python 3.10; 3.11+ uses stdlib tomllib.
+    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]

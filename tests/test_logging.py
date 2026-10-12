@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from wat.logging import RunLogger
 
 
@@ -33,11 +35,22 @@ def test_run_json_written(tmp_path):
 
 
 def test_prune_keeps_recent_runs(tmp_path):
-    stems = [f"fl_{i:02d}" for i in range(5)]
-    for s in stems:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir(parents=True)
+    # Five runs from earlier invocations, oldest first.
+    for i in range(5):
+        old = runs_dir / f"fl_old{i}-20260101T000000Z-1"
+        old.mkdir()
+        os.utime(old, (1_000_000 + i, 1_000_000 + i))
+    for s in ("fl_a", "fl_b", "fl_c", "fl_d"):
         RunLogger(app="test", log_dir=str(tmp_path), flow_stem=s, echo=False, keep_runs=3).close()
-    runs = sorted((tmp_path / "runs").iterdir())
-    assert len(runs) <= 3
+    names = {p.name.split("-")[0] for p in runs_dir.iterdir()}
+    # keep_runs - 1 of the most recent earlier runs survive...
+    assert {"fl_old3", "fl_old4"} <= names
+    assert not names & {"fl_old0", "fl_old1", "fl_old2"}
+    # ...and every run of THIS invocation is kept, even beyond keep_runs, so a long
+    # --all run never deletes its own earlier flows' artifacts before reporting.
+    assert {"fl_a", "fl_b", "fl_c", "fl_d"} <= names
 
 
 def test_prune_never_deletes_own_run_dir(tmp_path):
