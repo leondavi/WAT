@@ -69,7 +69,10 @@ an alias and normalized to `value` at load time.
 | `retry` | Retry the step up to N times with backoff before failing. |
 | `optional` | Log and continue if the step fails (never fails the flow). |
 | `soft` | Record the failure but keep going; the flow fails at the end with all soft failures. |
-| `if` / `skip_if` | A JS expression; run (or skip) the step based on its truthiness. |
+| `if` / `skip_if` | A JS expression; run (or skip) the step based on its truthiness. A predicate that throws (or references an unknown `{{var}}`) fails the step as `flow_authoring` rather than silently skipping it. |
+
+`retry`, `optional`, and `soft` apply to every step failure, including Playwright
+errors such as a locator timeout, not only to failed assertions.
 | `store_as` | Store the step's result/value under this name for `{{...}}` interpolation. |
 
 ### `use` — reusable sub-flows
@@ -114,6 +117,9 @@ split). It must return either:
 * a boolean, or
 * `{ "pass": true|false, "reason": "...", ...diagnostics }`.
 
+`pass` must be truthy to pass: `null`, `undefined`, `0` and `""` fail (so
+`{pass: el && ok}` fails when `el` is missing). An object with no `pass` key passes.
+
 On failure, any extra fields on the returned object (e.g. `why`, `reply`, `label`)
 are serialized (JSON, truncated) into the failure reason — they appear in the run
 log, `run.json`, and the agent prompt, so you don't need a `console.warn` round-trip
@@ -136,14 +142,18 @@ to see them.
 Each run writes a per-run directory under `<tmpdir>/wat/<app>/runs/<run_id>/` with
 source-tagged logs (`wat.log`, `browser.log`, `app.log`), `steps.jsonl`, `run.json`
 (machine-readable result + **failure source**), and, on failure, `trace.zip`,
-`<flow>.failed.png/html`, and `<flow>.agent_prompt.txt`. See
+`<flow>.failed.png/html`, and `<flow>.agent_prompt.txt`. Older run dirs are pruned to
+`keep_runs` once, at the start of an invocation; runs from the current invocation are
+never pruned, so a large `--all` keeps every artifact its reports point to. See
 [`docs/diagnostics.md`](docs/diagnostics.md).
 
 ## 7. Extending WAT
 
 Apps register custom actions/hooks in their own plugin module via the public API
 (`register_action`, `register_hook`, `login_provider`, `reset_hook`), loaded through
-config `plugins`. Core actions never need forking. See
+config `plugins`. Hook phases are `before_flow`, `before_step`, `after_step`, and
+`after_flow`; `after_flow` runs for passing and failing flows alike (a failing teardown
+is logged and never masks the flow result). Core actions never need forking. See
 [`docs/authoring-flows.md`](docs/authoring-flows.md) and
 [`docs/migrating-from-selenium.md`](docs/migrating-from-selenium.md).
 

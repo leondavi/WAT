@@ -12,6 +12,9 @@ captures what you do — clicks, typing (coalesced to the final value), select/c
 changes, Enter/Escape — inferring stable selectors (`data-testid` > `id` > `role`+name >
 `name` > short CSS path). Close the browser to write the file.
 
+Password fields are never recorded: their `value` is written as `{{password}}` for you
+to bind (e.g. from a `matrix` row or a login provider).
+
 The output is a **draft**: review the selectors, add the assertions that express what
 you meant to verify, and lint with `wat --validate-only --flow <file>`.
 
@@ -77,7 +80,10 @@ a committed baseline PNG:
 
 The first run (or `--update-baselines`) writes the baseline under `visual_baseline_dir`
 (default `<root>/baselines`, meant to be committed) and passes; later runs fail if more
-than `max_diff_ratio` of pixels differ, writing a `.diff.png` into the run dir. Tune
+than `max_diff_ratio` of pixels differ, writing a `.diff.png` into the run dir. In CI set
+`visual_require_baseline = true` (or `WAT_VISUAL_REQUIRE_BASELINE=1`, or per step
+`"require_baseline": true`) so a missing baseline fails instead of being created; otherwise
+an uncommitted baseline would pass on every fresh checkout. Tune
 `max_diff_ratio` / `pixel_threshold` to absorb anti-aliasing noise across machines.
 
 ## Reusable fragments (`use`)

@@ -22,6 +22,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
@@ -33,6 +35,13 @@ APP = "APP"
 STEP = "STEP"
 
 _LEVELS = {"debug": 10, "info": 20, "warn": 30, "error": 40}
+
+# Pruning happens once per log base per process, and only touches run dirs older than
+# this process: a long ``--all`` run must never delete its own earlier flows' artifacts
+# (or a parallel worker's live dir) before the run's reports are written.
+_PROCESS_START = time.time()
+_PRUNED_BASES: set[Path] = set()
+_PRUNE_LOCK = threading.Lock()
 
 
 def run_root(app_name: str, log_dir: str | None) -> Path:
@@ -149,7 +158,8 @@ class RunLogger:
                 pass
 
     def _prune(self, keep: int) -> None:
-        """Keep the current run plus the ``keep - 1`` most-recent older runs.
+        """Keep the ``keep - 1`` most-recent runs from earlier invocations (plus every
+        run of this process). Runs once per log base per process.
 
         Runs are ordered by directory mtime (creation/modification recency), NOT by
         name: ``run_id`` leads with the flow stem, so a name sort would order runs
@@ -160,6 +170,10 @@ class RunLogger:
         runs_dir = self.base / "runs"
         if keep <= 0 or not runs_dir.exists():
             return
+        with _PRUNE_LOCK:
+            if self.base in _PRUNED_BASES:
+                return
+            _PRUNED_BASES.add(self.base)
 
         def _mtime(p):
             try:
@@ -168,7 +182,8 @@ class RunLogger:
                 return 0.0
 
         others = sorted(
-            (p for p in runs_dir.iterdir() if p.is_dir() and p != self.dir),
+            (p for p in runs_dir.iterdir()
+             if p.is_dir() and p != self.dir and _mtime(p) < _PROCESS_START),
             key=_mtime,
         )
         # Keep the current run + the (keep - 1) most-recent others; delete the rest.

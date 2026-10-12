@@ -8,6 +8,7 @@ that let flows absorb flakiness declaratively instead of with ad-hoc sleeps.
 
 from __future__ import annotations
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -17,10 +18,11 @@ from typing import Any
 from .config import WatConfig
 from .context import StepContext
 from .driver import BrowserSession, Driver
-from .errors import AssertionFailure, StepFailure, SOURCE_APP, SOURCE_BROWSER
+from .errors import (AssertionFailure, SchemaError, StepFailure, WatEngineError, SOURCE_APP,
+                     SOURCE_BROWSER, SOURCE_FLOW_AUTHORING)
 from .logging import ConsoleLog, RunLogger
 from .registry import REGISTRY, Registry
-from .reporting import write_failure_artifacts, write_success_summary
+from .reporting import classify, write_failure_artifacts, write_success_summary
 from .schema import flow_matrix, load_flow
 
 
@@ -82,6 +84,7 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
         failed_action: str | None = None
         summary: dict[str, Any] = {}
         rc = 0
+        ctx: StepContext | None = None
         try:
             driver.start()
             ctx = StepContext(page=driver.page, browser_context=driver.context, driver=driver,
@@ -107,6 +110,7 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
                     source=SOURCE_APP,
                 )
 
+            _run_after_flow(registry, ctx, log)
             driver.drain_diagnostics()
             summary = write_success_summary(ctx=ctx, log=log, steps_run=len(flow["steps"]))
             log.wat(f"PASSED ({len(flow['steps'])} steps)")
@@ -114,6 +118,8 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
 
         except BaseException as exc:  # noqa: BLE001 — we classify and report every failure
             rc = 1
+            if ctx is not None:
+                _run_after_flow(registry, ctx, log)
             driver.drain_diagnostics()
             summary = write_failure_artifacts(ctx=_ctx_for_report(driver, config, flow, log_stem, log),
                                               driver=driver, log=log, exc=exc,
@@ -121,6 +127,10 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
             log.wat(f"FAILED at step {failed_index} ({failed_action}): {exc}", level="error")
             _maybe_pause_on_failure(driver, config, log)
             driver.stop(save_trace=True, trace_path=log.dir / "trace.zip")
+            # Artifacts are written; an interrupt (Ctrl+C) or exit must still stop the run
+            # rather than being recorded as one failed flow and moving on to the next.
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
 
         return FlowResult(
             path=flow_path, name=name, returncode=rc,
@@ -149,7 +159,14 @@ def _run_sequential(flow_paths: list[Path], config: WatConfig, registry: Registr
     try:
         stop = False
         for path in flow_paths:
-            for case in _load_cases(path):
+            try:
+                cases = _load_cases(path)
+            except SchemaError as exc:
+                results.append(_schema_failure(path, exc))
+                if config.fail_fast:
+                    break
+                continue
+            for case in cases:
                 result = execute_flow(path, config, registry, session=session, **case)
                 results.append(result)
                 if config.fail_fast and result.returncode != 0:
@@ -164,14 +181,41 @@ def _run_sequential(flow_paths: list[Path], config: WatConfig, registry: Registr
 
 def _run_parallel(flow_paths: list[Path], config: WatConfig, registry: Registry) -> list[FlowResult]:
     # Each task launches its own browser (sessions are thread-bound). fail_fast in
-    # parallel means "stop submitting more once one fails".
-    tasks = [(path, case) for path in flow_paths for case in _load_cases(path)]
+    # parallel means "start no new flow once one has failed"; flows already running
+    # finish, flows not yet started are dropped from the results.
     results: list[FlowResult] = []
+    tasks = []
+    for path in flow_paths:
+        try:
+            tasks.extend((path, case) for case in _load_cases(path))
+        except SchemaError as exc:
+            results.append(_schema_failure(path, exc))
+    stop = threading.Event()
+    if config.fail_fast and results:
+        return results
+
+    def _task(path: Path, case: dict[str, Any]) -> FlowResult | None:
+        if stop.is_set():
+            return None
+        result = execute_flow(path, config, registry, **case)
+        if config.fail_fast and result.returncode != 0:
+            stop.set()
+        return result
+
     with ThreadPoolExecutor(max_workers=config.workers) as pool:
-        futures = [pool.submit(execute_flow, path, config, registry, **case) for path, case in tasks]
+        futures = [pool.submit(_task, path, case) for path, case in tasks]
         for future in futures:  # preserves submission order
-            results.append(future.result())
+            result = future.result()
+            if result is not None:
+                results.append(result)
     return results
+
+
+def _schema_failure(path: Path, exc: SchemaError) -> FlowResult:
+    """A failed result for a flow that could not be loaded, so one malformed file
+    neither aborts the run nor loses the report for the flows that did run."""
+    return FlowResult(path=path, name=path.stem, returncode=1, status="fail", duration_ms=0,
+                      source=SOURCE_FLOW_AUTHORING, message=f"invalid flow: {exc}")
 
 
 def _load_cases(flow_path: Path) -> list[dict[str, Any]]:
@@ -206,7 +250,7 @@ def _run_step(ctx: StepContext, index: int, registry: Registry, soft_failures: l
     # In a live run, announce each step's intent BEFORE it runs so a watcher can
     # correlate what they see in the headed browser with the log.
     if ctx.config.verbose_steps_effective():
-        ctx.log.wat(f"→ [{index}] {action} {_describe(step)}".rstrip())
+        ctx.log.wat(f"-> [{index}] {action} {_describe(step)}".rstrip())
 
     for hook in registry.hooks("before_step"):
         hook(ctx)
@@ -219,7 +263,9 @@ def _run_step(ctx: StepContext, index: int, registry: Registry, soft_failures: l
             result = _dispatch(ctx, action, registry)
             last_error = None
             break
-        except (StepFailure, AssertionError) as exc:
+        except WatEngineError:
+            raise
+        except Exception as exc:  # incl. Playwright TimeoutError/Error: honor retry/optional/soft
             last_error = exc
             if attempt + 1 < attempts:
                 ctx.log.wat(f"step {index} ({action}) retry {attempt + 1}/{attempts - 1}: {exc}",
@@ -260,8 +306,9 @@ def _interpret(result: Any, error: BaseException | None) -> tuple[bool, str | No
     if result is False:
         return False, None
     if isinstance(result, dict):
-        # pass: null == skip == treated as pass.
-        passed = result.get("pass", True) is not False
+        # Only a truthy ``pass`` passes: null / 0 / "" usually mean the check itself
+        # found nothing (e.g. ``{pass: el && ok}`` with a missing element).
+        passed = bool(result.get("pass", True))
         reason = result.get("reason")
         if not passed:
             extras = {k: v for k, v in result.items() if k not in ("pass", "reason")}
@@ -307,8 +354,12 @@ def _handle_failure(ctx: StepContext, index: int, action: str, reason: str | Non
                   "duration_ms": duration_ms, "error": reason})
     if isinstance(error, StepFailure):
         raise error
-    raise AssertionFailure(label, source=getattr(error, "source", SOURCE_APP),
-                           step_index=index, action=action, reason=reason)
+    if error is None or isinstance(error, AssertionError):
+        source = SOURCE_APP
+    else:
+        source = classify(error)  # e.g. a Playwright timeout -> browser
+    raise AssertionFailure(label, source=source, step_index=index, action=action,
+                           reason=reason) from error
 
 
 def _should_skip(ctx: StepContext) -> bool:
@@ -322,10 +373,20 @@ def _should_skip(ctx: StepContext) -> bool:
 
 
 def _truthy_js(ctx: StepContext, expr: str) -> bool:
+    # A broken predicate (JS error, unknown {{var}}) is an authoring error, not "false":
+    # treating it as false would silently skip the step and let the flow pass.
     try:
         return bool(ctx.page.evaluate(f"() => ({ctx.resolve(expr)})"))
-    except Exception:
-        return False
+    except Exception as exc:
+        raise StepFailure(f"if/skip_if predicate {expr!r} failed to evaluate: {exc}",
+                          source=SOURCE_FLOW_AUTHORING) from exc
+
+
+def _run_after_flow(registry: Registry, ctx: StepContext, log: RunLogger) -> None:
+    """Run ``after_flow`` teardown hooks; a failing teardown is logged, never masks
+    the flow's own result."""
+    for hook in registry.hooks("after_flow"):
+        _safe_hook(hook, ctx, log, "after_flow")
 
 
 def _final_checks(driver: Driver, config: WatConfig, soft_failures: list[str]) -> None:
@@ -366,11 +427,25 @@ def _describe(step: dict) -> str:
     if step.get("selector"):
         by = step.get("by", "css")
         parts.append(f"{by}={step['selector']!r}")
+    secret = _looks_secret(step)
     for key in ("url", "value", "event", "pattern", "count", "seconds"):
         if key in step:
             val = str(step[key])
-            parts.append(f"{key}={val[:60]!r}" if key == "value" else f"{key}={val}")
+            if key == "value":
+                parts.append("value=<masked>" if secret else f"{key}={val[:60]!r}")
+            else:
+                parts.append(f"{key}={val}")
     return " ".join(parts)
+
+
+_SECRET_HINTS = ("password", "passwd", "secret", "token", "api_key", "apikey", "otp")
+
+
+def _looks_secret(step: dict) -> bool:
+    """True when a step's target suggests its ``value`` is a credential, so live
+    logging must not echo it to stdout / wat.log."""
+    haystack = " ".join(str(step.get(k, "")) for k in ("selector", "name", "comment")).lower()
+    return any(hint in haystack for hint in _SECRET_HINTS)
 
 
 def _maybe_pause_on_failure(driver: Driver, config: WatConfig, log: RunLogger) -> None:

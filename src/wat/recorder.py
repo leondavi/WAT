@@ -61,6 +61,8 @@ _RECORDER_JS = """(() => {
     if (el.tagName === 'SELECT') send({kind: 'select', ...loc, value: el.value});
     else if (el.type === 'checkbox') send({kind: el.checked ? 'check' : 'uncheck', ...loc});
     else if (el.type === 'radio') send({kind: 'check', ...loc});
+    // Never write a typed password into a flow file that will be committed.
+    else if (el.type === 'password') send({kind: 'type', ...loc, value: '{{password}}'});
     else send({kind: 'type', ...loc, value: el.value});
   }, true);
 
