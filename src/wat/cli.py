@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from . import plugins
+from . import __version__, plugins
 from .config import load_config, WatConfig
 from .registry import REGISTRY, HOOK_PHASES
 from .schema import find_flows, flow_labels, load_flow, validate_file
@@ -27,6 +27,7 @@ from .schema import find_flows, flow_labels, load_flow, validate_file
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="wat", description="WAT — Web Auto Tester (Playwright).")
+    p.add_argument("--version", action="version", version=f"wat {__version__}")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--flow", type=Path, help="Path to a single fl_<name>.json flow.")
     mode.add_argument("--all", action="store_true", help="Run all flows in the flows dir.")
