@@ -420,6 +420,13 @@ def _ctx_for_report(driver: Driver, config: WatConfig, flow: dict, stem: str, lo
                        config=config, flow=flow, flow_stem=stem, log=log, warnings=warnings)
 
 
+def _safe_hook(hook: Any, ctx: StepContext, log: RunLogger, name: str) -> None:
+    try:
+        hook(ctx)
+    except Exception as exc:  # a failing teardown must never mask real assertions
+        log.wat(f"{name} hook failed (ignored): {exc}", level="warn")
+
+
 def _run_reset(hook: Any, ctx: StepContext) -> None:
     """Run the app's pre-flow reset hook and act on its outcome.
 
