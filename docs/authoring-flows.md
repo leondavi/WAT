@@ -112,6 +112,34 @@ in a subdirectory (so `--all` never runs it standalone) and pull it in with a `u
 The fragment's steps are inlined at load time; captured `{{var}}`s are shared with the
 parent. See `CONTRACT.md` for the full rules (path resolution, cycles, nesting).
 
+## Shared JS helpers (`helpers`)
+
+When many flows need the same in-page helper (a send-and-await-reply function, a
+reply reader), keep it in ONE file instead of copy-pasting it into each `assert_js`:
+
+```js
+// flows/helpers.js -- injected into every page of every flow
+const lastReply = () => {   // private: not visible to flows
+  const nodes = document.querySelectorAll('[data-role=reply]');
+  return nodes.length ? nodes[nodes.length - 1].innerText : '';
+};
+window.__watSend = async (text, timeoutMs = 30000) => { /* ... uses lastReply() ... */ };
+```
+
+```toml
+# wat.toml
+helpers = "flows/helpers.js"
+```
+
+```json
+{"action": "assert_js", "script": "return window.__watSend('hi').then(r => ({pass: r.length > 0, reply: r}))"}
+```
+
+The file is registered with `context.add_init_script`, so it survives navigations and
+reloads. Attach what flows call to `window`; top-level declarations stay private to
+the file. `wat --validate-only` reports a missing file (and, with `node` on PATH, a
+syntax error) before anything runs.
+
 ## Data-driven flows (`matrix`)
 
 Run one journey across many inputs (roles, locales, a table of input->expected) without

@@ -161,6 +161,7 @@ class Driver:
             self.log.wat(f"restoring storage_state from {ss_path}")
         self.context = self.browser.new_context(**context_kwargs)
         self.context.set_default_timeout(self.config.wait_ms)
+        self._inject_helpers()
 
         if self.config.trace != "off":
             self.context.tracing.start(screenshots=True, snapshots=True, sources=True)
@@ -214,6 +215,16 @@ class Driver:
             self.log.browser(f"network {fail.get('status', 'FAILED')}: {fail.get('url')}")
 
     # -- internals ---------------------------------------------------------
+
+    def _inject_helpers(self) -> None:
+        """Register the configured shared JS helpers on the context (if any), so they
+        run before app scripts on every document this flow loads."""
+        from .jshelpers import helpers_path, init_script
+
+        script = init_script(self.config)
+        if script is not None:
+            self.context.add_init_script(script)
+            self.log.wat(f"injecting JS helpers from {helpers_path(self.config)}")
 
     def _wire_listeners(self, page: Any) -> None:
         page.on("console", self._on_console)

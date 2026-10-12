@@ -74,6 +74,11 @@ class WatConfig:
     # Off by default so it never surprises existing flows; assert_no_console_errors is explicit.
     fail_on_pageerror: bool = False
 
+    # Shared per-app JS helpers (wat.jshelpers): a .js file (relative to root) injected
+    # via context.add_init_script into every document of every flow, so assert_js /
+    # eval_js steps can call its functions without redefining them per flow.
+    helpers: str | None = None
+
     # Accessibility (wat.ext.a11y): path to an app-provided axe.min.js for engine "axe".
     a11y_axe_path: str | None = None
 

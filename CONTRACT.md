@@ -130,6 +130,21 @@ to see them.
  "script": "return new Promise(r => setTimeout(() => r({pass: !!window.App, reason: 'App missing'}), 300))"}
 ```
 
+### Shared JS helpers (config `helpers`)
+
+Set `helpers = "flows/helpers.js"` (config; relative to the app root) to inject one JS
+file into **every document of every flow** via Playwright `context.add_init_script`: it
+runs before the app's own scripts on the first `open`, on every later navigation or
+reload, and on the reset hook's navigation. Flows then call the shared functions from
+`assert_js` / `eval_js` without redefining them, and editing the file changes every flow.
+
+* Publish what flows call on `window` (e.g. `window.__watSend = async (text) => {...}`).
+  Playwright wraps init scripts in a function, so top-level `function`/`const`
+  declarations stay private to the file.
+* `wat --validate-only` checks the file once per run: missing/unreadable is an error,
+  and when `node` is on PATH a syntax error is too. At run time an unreadable file
+  fails the flow up front with source `flow_authoring`.
+
 ## 5. Exit codes
 
 | Exit | Meaning |
