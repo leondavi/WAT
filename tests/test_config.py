@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from wat.config import load_config, _coerce
+from wat.config import WatConfig, load_config, _coerce
 
 
 def test_coerce_scalars():
@@ -35,3 +35,21 @@ def test_cli_overrides_win_over_env(tmp_path, monkeypatch):
     monkeypatch.setenv("WAT_BASE_URL", "http://env")
     cfg = load_config(tmp_path, {"base_url": "http://cli"})
     assert cfg.base_url == "http://cli"
+
+
+def test_flow_base_url_wins_by_default():
+    from wat.context import effective_base_url
+
+    cfg = WatConfig(base_url="http://localhost:4137")
+    assert effective_base_url(cfg, {"base_url": "http://localhost:4000"}) == "http://localhost:4000"
+    assert effective_base_url(cfg, {}) == "http://localhost:4137"
+
+
+def test_base_url_override_beats_flow_base_url(tmp_path, monkeypatch):
+    from wat.context import effective_base_url
+
+    monkeypatch.setenv("WAT_BASE_URL", "http://localhost:4137")
+    monkeypatch.setenv("WAT_BASE_URL_OVERRIDE", "1")
+    cfg = load_config(tmp_path)
+    assert cfg.base_url_override is True
+    assert effective_base_url(cfg, {"base_url": "http://localhost:4000"}) == "http://localhost:4137"

@@ -20,6 +20,14 @@ from .interpolate import maybe_interpolate, maybe_interpolate_lenient
 _ABSOLUTE_PREFIXES = ("http://", "https://", "data:", "about:", "file:", "blob:")
 
 
+def effective_base_url(config: Any, flow: dict[str, Any]) -> str:
+    """The base URL a flow runs against: the flow's own ``base_url`` key, unless the
+    run sets ``base_url_override`` (``--force-base-url``), which makes config win."""
+    if config.base_url_override:
+        return config.base_url
+    return flow.get("base_url") or config.base_url
+
+
 def resolve_url(base_url: str, path_or_url: str) -> str:
     """Join *base_url* and *path_or_url*, leaving already-absolute URLs untouched."""
     if path_or_url.startswith(_ABSOLUTE_PREFIXES):
@@ -49,8 +57,7 @@ class StepContext:
 
     @property
     def base_url(self) -> str:
-        # A flow may override the config base_url; the runner sets flow["base_url"].
-        return self.flow.get("base_url") or self.config.base_url
+        return effective_base_url(self.config, self.flow)
 
     def resolve(self, value: Any) -> Any:
         """Interpolate ``{{var}}`` placeholders from the capture store."""

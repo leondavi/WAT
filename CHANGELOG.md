@@ -7,6 +7,17 @@ All notable changes to WAT are documented here. The format follows
 `register_hook`, `login_provider`, `reset_hook`, `StepContext`) are stable within a
 major version.
 
+## [1.0.1] - 2026-10-12
+
+### Added
+- `--force-base-url` (config `base_url_override = true`, env `WAT_BASE_URL_OVERRIDE=1`):
+  the configured `base_url` wins over a flow's own `base_url` key, so flows that record
+  a dev address can run against another server (CI port, worktree, staging) without
+  rewriting them. Off by default; `wat --doctor` reports which base URL wins (#13).
+
+### Fixed
+- The flow start log line now shows the base URL the flow actually runs against.
+
 ## [1.0.0] - 2026-10-12
 
 First stable release.
@@ -48,4 +59,5 @@ First stable release.
 
 Initial development version.
 
+[1.0.1]: https://github.com/leondavi/WAT/releases/tag/v1.0.1
 [1.0.0]: https://github.com/leondavi/WAT/releases/tag/v1.0.0

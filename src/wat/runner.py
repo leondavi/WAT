@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import WatConfig
-from .context import StepContext
+from .context import StepContext, effective_base_url
 from .driver import BrowserSession, Driver
 from .errors import (AssertionFailure, SchemaError, StepFailure, WatEngineError, SOURCE_APP,
                      SOURCE_BROWSER, SOURCE_FLOW_AUTHORING)
@@ -77,7 +77,7 @@ def execute_flow(flow_path: str | Path, config: WatConfig, registry: Registry = 
     warnings: list[str] = []  # shared with every StepContext of this flow (ctx.warn)
     with RunLogger(app=config.app_name, log_dir=config.log_dir, flow_stem=log_stem,
                    level=config.log_level, keep_runs=config.keep_runs) as log:
-        log.wat(f"flow '{name}' - {len(flow['steps'])} steps @ {config.base_url}")
+        log.wat(f"flow '{name}' - {len(flow['steps'])} steps @ {effective_base_url(config, flow)}")
         # A flow may pin its own storage_state (or clear it) without disturbing the rest
         # of the config; storage_state is a context kwarg, so this works on a shared
         # --all browser too (each flow still gets its own fresh context).
