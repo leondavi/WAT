@@ -27,6 +27,7 @@ def build_json(results: Iterable["FlowResult"]) -> str:
         "total": len(results),
         "passed": passed,
         "failed": len(results) - passed,
+        "warned": sum(1 for r in results if r.warnings),
         "flows": [
             {
                 "name": r.name,
@@ -37,6 +38,7 @@ def build_json(results: Iterable["FlowResult"]) -> str:
                 "failed_step": r.failed_step,
                 "message": r.message,
                 "log_dir": str(r.log_dir) if r.log_dir else None,
+                "warnings": list(r.warnings),
             }
             for r in results
         ],
@@ -73,6 +75,9 @@ def build_junit(results: Iterable["FlowResult"], suite_name: str = "wat") -> str
             if r.log_dir:
                 detail.append(f"artifacts: {r.log_dir}")
             failure.text = "\n".join(str(d) for d in detail)
+        if r.warnings:  # JUnit has no warning element; surface them in the case's stdout
+            out = ET.SubElement(case, "system-out")
+            out.text = "\n".join(f"WARNING: {w}" for w in r.warnings)
 
     raw = ET.tostring(suite, encoding="unicode")
     return minidom.parseString(raw).toprettyxml(indent="  ")
@@ -85,8 +90,8 @@ def build_junit(results: Iterable["FlowResult"], suite_name: str = "wat") -> str
 # Inline styles so the report is one portable file (works as a CI artifact, offline,
 # and in either light or dark theme).
 _HTML_CSS = """
-:root { color-scheme: light dark; --pass:#1a7f37; --fail:#cf222e; --muted:#57606a; --line:#d0d7de; --bg:#fff; --fg:#1f2328; }
-@media (prefers-color-scheme: dark) { :root { --muted:#8b949e; --line:#30363d; --bg:#0d1117; --fg:#e6edf3; } }
+:root { color-scheme: light dark; --pass:#1a7f37; --fail:#cf222e; --warn:#9a6700; --muted:#57606a; --line:#d0d7de; --bg:#fff; --fg:#1f2328; }
+@media (prefers-color-scheme: dark) { :root { --warn:#d29922; --muted:#8b949e; --line:#30363d; --bg:#0d1117; --fg:#e6edf3; } }
 * { box-sizing: border-box; } body { margin:0; font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
 .wrap { max-width:1000px; margin:0 auto; padding:24px; }
 h1 { font-size:20px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 20px; }
@@ -95,7 +100,7 @@ h1 { font-size:20px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 20p
 .tile .n { font-size:22px; font-weight:700; } .tile .l { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
 table { width:100%; border-collapse:collapse; } th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
 th { color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
-.badge { font-weight:700; font-size:12px; } .pass{color:var(--pass);} .fail{color:var(--fail);} .muted{color:var(--muted);}
+.badge { font-weight:700; font-size:12px; } .pass{color:var(--pass);} .fail{color:var(--fail);} .warn{color:var(--warn);} .muted{color:var(--muted);}
 .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
 details { margin-top:6px; } summary { cursor:pointer; color:var(--muted); }
 img.shot { max-width:100%; border:1px solid var(--line); border-radius:6px; margin-top:8px; }
@@ -140,6 +145,9 @@ def build_html(results: Iterable["FlowResult"], suite_name: str = "wat") -> str:
                 if uri:
                     bits.append(f"<img class='shot' alt='failure screenshot' src='{uri}'>")
             detail = ("<details open><summary>failure detail</summary>" + "".join(bits) + "</details>")
+        if r.warnings:
+            detail += "".join(f"<div><span class='badge warn'>WARN</span> <span class='mono'>"
+                              f"{html.escape(w)}</span></div>" for w in r.warnings)
         rows.append(
             f"<tr><td><span class='badge {status_cls}'>{status_txt}</span></td>"
             f"<td>{html.escape(r.name)}<br><span class='mono muted'>{html.escape(r.path.name)}</span>{detail}</td>"

@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from . import plugins
+from . import __version__, plugins
 from .config import load_config, WatConfig
 from .registry import REGISTRY, HOOK_PHASES
 from .schema import find_flows, flow_labels, load_flow, validate_file
@@ -27,6 +27,7 @@ from .schema import find_flows, flow_labels, load_flow, validate_file
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="wat", description="WAT — Web Auto Tester (Playwright).")
+    p.add_argument("--version", action="version", version=f"wat {__version__}")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--flow", type=Path, help="Path to a single fl_<name>.json flow.")
     mode.add_argument("--all", action="store_true", help="Run all flows in the flows dir.")
@@ -160,17 +161,27 @@ def _run_all(cfg: WatConfig, args: argparse.Namespace) -> int:
     skipped = sum(1 for f in flows if f not in ran)
 
     print("\n" + "=" * 60)
-    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, {skipped} skipped")
+    warned = sum(1 for r in results if r.warnings)
+    warn_note = f", {warned} with warnings" if warned else ""
+    print(f"RESULTS: {len(passed)} passed, {len(failed)} failed, {skipped} skipped{warn_note}")
     for r in passed:
         print(f"  [PASS] {r.path.name}  ({r.duration_ms}ms)")
+        _print_warnings(r)
     for r in failed:
         why = f" - {r.source}: {r.message}" if r.message else ""
         print(f"  [FAIL] {r.path.name}  ({r.duration_ms}ms){why}")
+        _print_warnings(r)
 
     if args.report:
         path = reports.write_report(results, args.report, args.report_format)
         print(f"\nReport ({args.report_format}) written to {path}")
     return 1 if failed else 0
+
+
+def _print_warnings(result) -> None:
+    """Print a flow's non-fatal warnings (e.g. a skipped reset) under its result line."""
+    for message in result.warnings:
+        print(f"         [WARN] {message}")
 
 
 def _list(cfg: WatConfig, args: argparse.Namespace) -> int:
@@ -190,8 +201,20 @@ def _list(cfg: WatConfig, args: argparse.Namespace) -> int:
 
 
 def _validate(cfg: WatConfig, args: argparse.Namespace) -> int:
+    from .jshelpers import helpers_path, validate_helpers
+
     targets = [args.flow] if args.flow else _filtered_flows(cfg, args.label, args.grep)
     total_errors = 0
+    # The shared helpers file is injected into every flow, so a broken one is reported
+    # here (once) instead of surfacing mid-run.
+    helper_errors = validate_helpers(cfg)
+    if helper_errors:
+        total_errors += len(helper_errors)
+        print(f"[FAIL] helpers {helpers_path(cfg)}")
+        for e in helper_errors:
+            print(f"     {e}")
+    elif cfg.helpers:
+        print(f"[PASS] helpers {helpers_path(cfg)}")
     for path in targets:
         errors = validate_file(path, REGISTRY)
         if errors:
@@ -267,6 +290,13 @@ def _doctor(cfg: WatConfig) -> int:
 
         ss_path, ss_exists = _resolve_storage_state(cfg)
         print(f"  storage     : {ss_path}  ({'found' if ss_exists else 'MISSING - run the setup flow'})")
+    if cfg.helpers:
+        from .jshelpers import helpers_path, validate_helpers
+
+        helper_errors = validate_helpers(cfg)
+        ok &= not helper_errors
+        status = "ok" if not helper_errors else "FAILED  " + "; ".join(helper_errors)
+        print(f"  helpers     : {helpers_path(cfg)}  {status}")
 
     core_actions = len(REGISTRY.names())
     ext_results = plugins.load_reporting(list(cfg.extensions), cfg.root)

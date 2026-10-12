@@ -74,6 +74,11 @@ class WatConfig:
     # Off by default so it never surprises existing flows; assert_no_console_errors is explicit.
     fail_on_pageerror: bool = False
 
+    # Shared per-app JS helpers (wat.jshelpers): a .js file (relative to root) injected
+    # via context.add_init_script into every document of every flow, so assert_js /
+    # eval_js steps can call its functions without redefining them per flow.
+    helpers: str | None = None
+
     # Accessibility (wat.ext.a11y): path to an app-provided axe.min.js for engine "axe".
     a11y_axe_path: str | None = None
 
@@ -88,6 +93,15 @@ class WatConfig:
     extensions: list[str] = field(default_factory=list)    # e.g. ["liveview", "sql"]
     auth_provider: str | None = None
     reset_hook: str | None = None
+    # Reset-hook robustness (issue #8). A reset hook reports "skipped" by returning
+    # False / {"pass": False, "reason": ...} (or raising); that becomes a flow WARNING
+    # in run.json, the --all summary, and reports. reset_required turns it into a
+    # failure instead (a flow-level "reset_required" key overrides this default).
+    reset_required: bool = False
+    # Budget + attempts for wat.ext.liveview.wait_for_join (the readiness wait a
+    # LiveView reset hook uses before pushing its reset event).
+    reset_join_timeout_ms: int = 30_000
+    reset_join_attempts: int = 3
     credentials_source: str | None = None
 
     # Failure reporting.

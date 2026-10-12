@@ -1,7 +1,8 @@
 """Flow loading, canonicalization, and validation.
 
 A flow file is ``fl_<name>.json`` with top-level ``{name, label?, base_url?,
-description?, reset_conversation?, steps: [...]}``. Each step is
+description?, reset_required?, steps: [...]}`` (plus app-specific keys such as Cells'
+``reset_conversation``, which the engine ignores). Each step is
 ``{action, ...fields, comment?}``.
 
 Canonicalization smooths over the two forks' historical divergence (Gurim's
@@ -156,6 +157,8 @@ def validate_flow(flow: dict[str, Any], registry: Registry = REGISTRY) -> list[s
         else:
             for row in raw:
                 produced.update(row.keys())
+    if "reset_required" in flow and not isinstance(flow["reset_required"], bool):
+        errors.append("'reset_required' must be true or false")
 
     for i, step in enumerate(flow["steps"]):
         action = step.get("action")

@@ -41,6 +41,9 @@ class StepContext:
     store: dict[str, Any] = field(default_factory=dict)   # {{var}} capture store
     state: dict[str, Any] = field(default_factory=dict)   # free per-flow scratch
     step: dict[str, Any] = field(default_factory=dict)    # the current step
+    # Non-fatal problems surfaced in run.json / summaries / reports (see warn()).
+    # Shared by every per-step copy of the context (dataclasses.replace is shallow).
+    warnings: list[str] = field(default_factory=list)
 
     # -- convenience helpers ----------------------------------------------
 
@@ -82,6 +85,12 @@ class StepContext:
         from .locators import resolve_locator
 
         return resolve_locator(self.page, step or self.step, self.resolve)
+
+    def warn(self, message: str) -> None:
+        """Record a flow-level WARNING: logged now, and reported with the flow result
+        (run.json, the --all summary, JUnit/JSON/HTML reports) without failing it."""
+        self.warnings.append(message)
+        self.log.wat(f"WARNING: {message}", level="warn")
 
     def timeout_ms(self) -> int:
         """Per-step ``timeout`` override, else the configured default wait."""
